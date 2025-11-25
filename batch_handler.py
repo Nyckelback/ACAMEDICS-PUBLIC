@@ -16,29 +16,91 @@ active_batches: Dict[int, List[Dict[str, Any]]] = {}
 batch_mode: Dict[int, bool] = {} 
 
 # --- PATRONES REGEX ---
-CHANNEL_LINK_PATTERN = re.compile(r'%%%\s*(?:https?://)?t\.me/(?:c/|\w+/)+(\d+)', re.IGNORECASE)
+# %%% para justificaciones (genera botón "VER JUSTIFICACIÓN")
+JUSTIFICATION_PATTERN = re.compile(r'%%%\s*(.+?)(?:\n|$)', re.IGNORECASE)
+
+# @@@ para botones custom
 BUTTON_PATTERN = re.compile(r'@@@\s*([^|\n]+?)(?:\s*\|\s*(.+))?$', re.MULTILINE)
+
+# Detectar links de Telegram: t.me/c/123456/789 o t.me/username/789
+TELEGRAM_LINK = re.compile(r'(?:https?://)?t\.me/(?:c/(\d+)|([a-zA-Z_][a-zA-Z0-9_]*))/(\d+)', re.IGNORECASE)
 
 def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_USER_IDS
 
+def extract_telegram_deep_link(link_text: str, bot_username: str) -> Optional[str]:
+    """
+    Extrae un link de Telegram y lo convierte en deep link para el bot.
+    - t.me/c/1234567890/123 → bot?start=c_1234567890_123
+    - t.me/just_clinicase/30 → bot?start=@just_clinicase_30
+    - Solo ID (30) → bot?start=30
+    """
+    match = TELEGRAM_LINK.search(link_text)
+    if match:
+        private_id = match.group(1)  # t.me/c/XXXXX/ID
+        public_username = match.group(2)  # t.me/username/ID
+        message_id = match.group(3)
+        
+        if private_id:
+            # Canal privado
+            return f"https://t.me/{bot_username}?start=c_{private_id}_{message_id}"
+        elif public_username:
+            # Canal público
+            return f"https://t.me/{bot_username}?start=@{public_username}_{message_id}"
+    
+    # Si es solo un número
+    if link_text.strip().isdigit():
+        return f"https://t.me/{bot_username}?start={link_text.strip()}"
+    
+    return None
+
+def process_button_url(url_text: str) -> str:
+    """
+    Procesa la URL de un botón de forma inteligente:
+    - @username → https://t.me/username (perfil de Telegram)
+    - t.me/... → https://t.me/...
+    - link.com → https://link.com
+    - https://... → tal cual
+    - tg://... → tal cual
+    """
+    url = url_text.strip()
+    
+    if not url:
+        return ""
+    
+    # Ya tiene protocolo
+    if url.startswith(('http://', 'https://', 'tg://')):
+        return url
+    
+    # Es un @username de Telegram
+    if url.startswith('@'):
+        username = url[1:]  # Quitar @
+        return f"https://t.me/{username}"
+    
+    # Es un link de t.me
+    if url.startswith('t.me/'):
+        return f"https://{url}"
+    
+    # Es un dominio normal
+    if '.' in url:
+        return f"https://{url}"
+    
+    # Si no tiene nada, dejarlo vacío
+    return ""
+
 def has_special_syntax(text: str) -> bool:
-    """Verifica si el texto tiene %%% o @@@"""
     if not text:
         return False
-    return bool(CHANNEL_LINK_PATTERN.search(text) or BUTTON_PATTERN.search(text))
+    return bool(JUSTIFICATION_PATTERN.search(text) or BUTTON_PATTERN.search(text))
 
 def is_button_only_message(text: str) -> bool:
-    """Verifica si el mensaje es SOLO un botón @@@ sin otro contenido"""
     if not text:
         return False
-    # Quitar los patrones de botón y ver si queda algo
     clean = BUTTON_PATTERN.sub('', text).strip()
-    clean = CHANNEL_LINK_PATTERN.sub('', clean).strip()
-    return len(clean) == 0 and bool(BUTTON_PATTERN.search(text) or CHANNEL_LINK_PATTERN.search(text))
+    clean = JUSTIFICATION_PATTERN.sub('', clean).strip()
+    return len(clean) == 0 and has_special_syntax(text)
 
 async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa modo lote"""
     if not is_admin(update.effective_user.id): return
     user_id = update.effective_user.id
     active_batches[user_id] = []
@@ -46,11 +108,11 @@ async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "📦 **MODO LOTE ACTIVADO**\n\n"
-        "Envía todo (Encuestas, Fotos, Textos, Links).\n\n"
+        "Envía todo (Encuestas, Fotos, Textos).\n\n"
         "🔹 **Justificación:** `%%% t.me/canal/22`\n"
-        "🔸 **Botón custom:** `@@@ Texto | Link`\n"
-        "⚠️ El botón se pega al mensaje ANTERIOR\n\n"
-        "Finaliza con **/enviar**"
+        "🔸 **Botón:** `@@@ Texto | link` o `@@@ Texto | @user`\n"
+        "⚠️ Botón solo → se pega al mensaje anterior\n\n"
+        "**/enviar** para publicar"
     , parse_mode="Markdown")
 
 async def cmd_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -61,7 +123,6 @@ async def cmd_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("🗑️ Cancelado.")
 
 async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Publica todo al canal"""
     if not is_admin(update.effective_user.id): return
     user_id = update.effective_user.id
     
@@ -70,14 +131,14 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Lote vacío.")
         return
 
-    status = await update.message.reply_text(f"🚀 Enviando {len(items)} mensajes...")
+    status = await update.message.reply_text(f"🚀 Enviando {len(items)}...")
 
     try:
         count = 0
         last_sent_message = None
         
         for item in items:
-            # Si es un botón para asociar al anterior
+            # Botón para asociar al anterior
             if item['type'] == 'button_for_previous':
                 if last_sent_message:
                     try:
@@ -86,40 +147,32 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             message_id=last_sent_message.message_id,
                             reply_markup=item['reply_markup']
                         )
-                        logger.info(f"✅ Botón asociado al mensaje {last_sent_message.message_id}")
                     except Exception as e:
                         logger.error(f"Error asociando botón: {e}")
-                        # Fallback: enviar como mensaje separado
-                        await context.bot.send_message(
-                            chat_id=PUBLIC_CHANNEL_ID,
-                            text="👇",
-                            reply_markup=item['reply_markup']
-                        )
                 continue
             
-            # Enviar el item normal
             sent = await send_item_reconstructed(context, item)
             if sent:
                 last_sent_message = sent
             count += 1
             await asyncio.sleep(1.5)
         
-        await status.edit_text(f"✅ **¡Listo! {count} mensajes enviados.**")
+        await status.edit_text(f"✅ {count} mensajes enviados.")
     except Exception as e:
-        logger.error(f"Error lote: {e}")
-        await status.edit_text(f"❌ Error enviando: {e}")
+        logger.error(f"Error: {e}")
+        await status.edit_text(f"❌ Error: {e}")
     finally:
         active_batches[user_id] = []
         batch_mode[user_id] = False
 
 async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """Captura mensajes para el lote"""
     user_id = update.effective_user.id
     if not batch_mode.get(user_id, False): 
         return False
 
     msg = update.message
     raw_text = msg.text or msg.caption or ""
+    bot_info = await context.bot.get_me()
     
     item = {
         'chat_id': msg.chat_id,
@@ -127,103 +180,103 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
         'reply_markup': None
     }
 
-    # ========== CASO 1: ENCUESTA ==========
+    # ========== ENCUESTA ==========
     if msg.poll:
         item['type'] = 'poll_clone'
         item['question'] = msg.poll.question
         item['options'] = [o.text for o in msg.poll.options]
-        item['is_anonymous'] = True  # Forzado para canales
+        item['is_anonymous'] = True
         item['poll_type'] = msg.poll.type
         item['allows_multiple_answers'] = msg.poll.allows_multiple_answers
         item['correct_option_id'] = msg.poll.correct_option_id
         item['explanation'] = msg.poll.explanation
         item['explanation_entities'] = msg.poll.explanation_entities
         
-        # Aviso si es quiz sin respuesta detectada
         if msg.poll.type == 'quiz' and msg.poll.correct_option_id is None:
-            await msg.reply_text(
-                "⚠️ **QUIZ SIN RESPUESTA DETECTADA**\n"
-                "Vota en la encuesta antes de enviarla.\n"
-                "Se enviará con opción A como correcta por defecto."
-            , parse_mode="Markdown")
-            item['correct_option_id'] = 0  # Fallback a A
+            await msg.reply_text("⚠️ Quiz sin respuesta. Se usará opción A.")
+            item['correct_option_id'] = 0
         
-        await msg.reply_text("➕ Encuesta capturada")
+        await msg.reply_text("➕ Encuesta")
     
-    # ========== CASO 2: MENSAJE SOLO CON BOTÓN (%%% o @@@) ==========
+    # ========== SOLO BOTÓN → ASOCIAR AL ANTERIOR ==========
     elif is_button_only_message(raw_text):
-        buttons = []
-        
-        # Procesar %%%
-        just_match = CHANNEL_LINK_PATTERN.search(raw_text)
-        if just_match:
-            content_id = just_match.group(1)
-            bot_info = await context.bot.get_me()
-            deep_link = f"https://t.me/{bot_info.username}?start={content_id}"
-            buttons.append([InlineKeyboardButton("VER JUSTIFICACIÓN 💬", url=deep_link)])
-        
-        # Procesar @@@
-        custom_matches = BUTTON_PATTERN.findall(raw_text)
-        for label, url in custom_matches:
-            url = (url or "").strip()
-            if url:
-                if not url.startswith(('http', 'tg://')): 
-                    url = 'https://' + url
-                buttons.append([InlineKeyboardButton(label.strip(), url=url)])
+        buttons = await build_buttons(raw_text, bot_info.username)
         
         if buttons:
             item['type'] = 'button_for_previous'
             item['reply_markup'] = InlineKeyboardMarkup(buttons)
-            await msg.reply_text("🔗 Botón capturado (se asociará al mensaje anterior)")
+            await msg.reply_text("🔗 Botón (→ msg anterior)")
         else:
-            return True  # Ignorar si no hay botones válidos
+            return True
     
-    # ========== CASO 3: MENSAJE CON CONTENIDO + BOTÓN ==========
+    # ========== CONTENIDO + BOTÓN ==========
     elif has_special_syntax(raw_text):
-        buttons = []
-        clean_text = raw_text
-        
-        # Procesar %%%
-        just_match = CHANNEL_LINK_PATTERN.search(raw_text)
-        if just_match:
-            content_id = just_match.group(1)
-            bot_info = await context.bot.get_me()
-            deep_link = f"https://t.me/{bot_info.username}?start={content_id}"
-            buttons.append([InlineKeyboardButton("VER JUSTIFICACIÓN 💬", url=deep_link)])
-            clean_text = CHANNEL_LINK_PATTERN.sub('', clean_text).strip()
-        
-        # Procesar @@@
-        custom_matches = BUTTON_PATTERN.findall(raw_text)
-        for label, url in custom_matches:
-            url = (url or "").strip()
-            if url:
-                if not url.startswith(('http', 'tg://')): 
-                    url = 'https://' + url
-                buttons.append([InlineKeyboardButton(label.strip(), url=url)])
-        clean_text = BUTTON_PATTERN.sub('', clean_text).strip()
+        buttons = await build_buttons(raw_text, bot_info.username)
+        clean_text = clean_special_syntax(raw_text)
         
         item['type'] = 'media' if (msg.photo or msg.video or msg.document) else 'text'
         item['clean_text'] = clean_text
         item['reply_markup'] = InlineKeyboardMarkup(buttons) if buttons else None
         
-        await msg.reply_text("➕ Mensaje con botón capturado")
+        await msg.reply_text("➕ Mensaje + botón")
     
-    # ========== CASO 4: MENSAJE NORMAL - COPIAR TAL CUAL ==========
+    # ========== MENSAJE NORMAL ==========
     else:
-        item['type'] = 'forward'  # Copiar sin modificar
-        await msg.reply_text("➕ Mensaje capturado")
+        item['type'] = 'forward'
+        await msg.reply_text("➕ Mensaje")
 
-    # Guardar
     if user_id not in active_batches: 
         active_batches[user_id] = []
     active_batches[user_id].append(item)
     return True
 
+async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboardButton]]:
+    """Construye botones desde el texto"""
+    buttons = []
+    
+    # Procesar %%% (justificaciones)
+    for match in JUSTIFICATION_PATTERN.finditer(text):
+        link_text = match.group(1).strip()
+        deep_link = extract_telegram_deep_link(link_text, bot_username)
+        if deep_link:
+            buttons.append([InlineKeyboardButton("VER JUSTIFICACIÓN 💬", url=deep_link)])
+    
+    # Procesar @@@ (botones custom)
+    for match in BUTTON_PATTERN.finditer(text):
+        label = match.group(1).strip()
+        url_raw = (match.group(2) or "").strip()
+        
+        if not label:
+            continue
+        
+        # Si tiene URL
+        if url_raw:
+            # Verificar si es un link de Telegram para contenido
+            if TELEGRAM_LINK.search(url_raw):
+                # Es un link de mensaje → convertir a deep link
+                deep_link = extract_telegram_deep_link(url_raw, bot_username)
+                if deep_link:
+                    buttons.append([InlineKeyboardButton(label, url=deep_link)])
+            else:
+                # Es un link normal o @username
+                processed_url = process_button_url(url_raw)
+                if processed_url:
+                    buttons.append([InlineKeyboardButton(label, url=processed_url)])
+        else:
+            # Sin URL - botón de solo display (callback vacío)
+            buttons.append([InlineKeyboardButton(label, callback_data="none")])
+    
+    return buttons
+
+def clean_special_syntax(text: str) -> str:
+    """Limpia %%% y @@@ del texto"""
+    clean = JUSTIFICATION_PATTERN.sub('', text)
+    clean = BUTTON_PATTERN.sub('', clean)
+    return clean.strip()
+
 async def send_item_reconstructed(context: ContextTypes.DEFAULT_TYPE, item: dict) -> Optional[object]:
-    """Envía un item al canal y retorna el mensaje enviado"""
     target = PUBLIC_CHANNEL_ID
     
-    # CASO 1: CLONAR ENCUESTA
     if item['type'] == 'poll_clone':
         return await context.bot.send_poll(
             chat_id=target,
@@ -237,7 +290,6 @@ async def send_item_reconstructed(context: ContextTypes.DEFAULT_TYPE, item: dict
             explanation_entities=item['explanation_entities']
         )
     
-    # CASO 2: FORWARD - Copiar mensaje exacto sin modificar
     if item['type'] == 'forward':
         return await context.bot.copy_message(
             chat_id=target,
@@ -245,7 +297,6 @@ async def send_item_reconstructed(context: ContextTypes.DEFAULT_TYPE, item: dict
             message_id=item['msg_id']
         )
     
-    # CASO 3: MEDIA con botones
     if item['type'] == 'media':
         return await context.bot.copy_message(
             chat_id=target,
@@ -255,7 +306,6 @@ async def send_item_reconstructed(context: ContextTypes.DEFAULT_TYPE, item: dict
             reply_markup=item.get('reply_markup')
         )
     
-    # CASO 4: TEXTO con botones
     if item['type'] == 'text':
         text = item.get('clean_text', '')
         if text:
