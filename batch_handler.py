@@ -16,10 +16,10 @@ active_batches: Dict[int, List[Dict[str, Any]]] = {}
 batch_mode: Dict[int, bool] = {} 
 
 # --- PATRONES REGEX ---
-# Detecta links para el botón: %%% https://t.me/canal/22
+# 1. Detecta links de canales (Justificaciones)
 CHANNEL_LINK_PATTERN = re.compile(r'%%%\s*(?:https?://)?t\.me/(?:c/|\w+/)+(\d+)', re.IGNORECASE)
 
-# Detecta botones custom: @@@ Texto | Link
+# 2. Detecta botones personalizados
 BUTTON_PATTERN = re.compile(r'@@@\s*([^|\n]+?)(?:\s*\|\s*(.+))?$', re.MULTILINE)
 
 def is_admin(user_id: int) -> bool:
@@ -31,7 +31,15 @@ async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     active_batches[user_id] = []
     batch_mode[user_id] = True
-    await update.message.reply_text("📦 **MODO LOTE**\nEnvía todo (Encuestas, Fotos, Textos).\n\nPara el botón de respuesta:\n`%%% https://t.me/tu_canal/123`")
+    
+    await update.message.reply_text(
+        "📦 **MODO LOTE ACTIVADO**\n\n"
+        "Envía todo (Encuestas, Fotos, Textos).\n\n"
+        "🔹 **Para Justificación:** Pega el link con `%%%`\n"
+        "   Ej: `%%% https://t.me/just_clinicase/20`\n"
+        "🔸 **Para Otro Botón:** Usa `@@@ Texto | Link`\n\n"
+        "Finaliza con **/enviar**"
+    , parse_mode="Markdown")
 
 async def cmd_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id): return
@@ -57,7 +65,7 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for item in items:
             await send_item_reconstructed(context, item)
             count += 1
-            await asyncio.sleep(1.5) # Pausa necesaria
+            await asyncio.sleep(1.5) # Pausa necesaria para evitar flood
         
         await status.edit_text(f"✅ **¡Listo! {count} mensajes enviados.**")
     except Exception as e:
@@ -84,14 +92,18 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
         item['type'] = 'poll_clone'
         item['question'] = msg.poll.question
         item['options'] = [o.text for o in msg.poll.options]
-        item['is_anonymous'] = msg.poll.is_anonymous
+        
+        # --- CORRECCIÓN CRÍTICA AQUÍ ---
+        # Forzamos True porque los Canales NO aceptan encuestas no-anónimas.
+        item['is_anonymous'] = True 
+        
         item['poll_type'] = msg.poll.type # 'regular' o 'quiz'
         item['allows_multiple_answers'] = msg.poll.allows_multiple_answers
         item['correct_option_id'] = msg.poll.correct_option_id
         item['explanation'] = msg.poll.explanation
         item['explanation_entities'] = msg.poll.explanation_entities
         
-        await msg.reply_text("➕ Encuesta capturada (Modo Clonación)")
+        await msg.reply_text("➕ Encuesta capturada (Forzada a Anónima para Canal)")
     
     # 2. SI ES TEXTO O MEDIA - PROCESAR BOTONES
     else:
@@ -118,7 +130,7 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
                 buttons.append([InlineKeyboardButton(label.strip(), url=url)])
             clean_text = BUTTON_PATTERN.sub('', clean_text).strip()
 
-        # Si el texto quedó vacío pero había botones (ej: mensaje solo con el link)
+        # Si el texto quedó vacío pero había botones
         if not clean_text and buttons and not (msg.photo or msg.video or msg.document):
             clean_text = "👇"
 
@@ -136,13 +148,13 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
 async def send_item_reconstructed(context: ContextTypes.DEFAULT_TYPE, item: dict):
     target = PUBLIC_CHANNEL_ID
     
-    # CASO 1: CLONAR ENCUESTA (Evita el error "Message can't be copied")
+    # CASO 1: CLONAR ENCUESTA
     if item['type'] == 'poll_clone':
         await context.bot.send_poll(
             chat_id=target,
             question=item['question'],
             options=item['options'],
-            is_anonymous=item['is_anonymous'],
+            is_anonymous=True, # RE-ASEGURAMOS QUE SEA ANÓNIMA
             type=item['poll_type'],
             allows_multiple_answers=item['allows_multiple_answers'],
             correct_option_id=item['correct_option_id'],
@@ -153,7 +165,6 @@ async def send_item_reconstructed(context: ContextTypes.DEFAULT_TYPE, item: dict
 
     # CASO 2: MENSAJES NORMALES
     if item['type'] == 'media':
-        # Usamos copy_message pero pisamos el caption
         await context.bot.copy_message(
             chat_id=target,
             from_chat_id=item['chat_id'],
@@ -163,7 +174,6 @@ async def send_item_reconstructed(context: ContextTypes.DEFAULT_TYPE, item: dict
             parse_mode="Markdown"
         )
     elif item['type'] == 'text':
-        # Enviar texto limpio
         if item['clean_text']:
             await context.bot.send_message(
                 chat_id=target,
