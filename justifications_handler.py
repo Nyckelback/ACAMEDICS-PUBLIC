@@ -36,7 +36,7 @@ async def handle_justification_request(update: Update, context: ContextTypes.DEF
     Formatos:
     - /start 22 (usa JUSTIFICATIONS_CHAT_ID)
     - /start c_1234567890_22 (canal privado específico)  
-    - /start @username_22 (canal público)
+    - /start p_username_22 (canal público - p = public)
     - /start 22-25 (rango)
     """
     if not update.message: 
@@ -71,12 +71,13 @@ async def handle_justification_request(update: Update, context: ContextTypes.DEF
             msg_part = '_'.join(parts[2:])
             message_ids = parse_message_ids(msg_part)
     
-    # Formato: @username_MSGID (canal público)
-    elif raw_arg.startswith('@'):
-        parts = raw_arg.split('_', 1)
-        if len(parts) >= 2:
-            chat_id = parts[0]
-            message_ids = parse_message_ids(parts[1])
+    # Formato: p_USERNAME_MSGID (canal público)
+    elif raw_arg.startswith('p_'):
+        parts = raw_arg.split('_')
+        if len(parts) >= 3:
+            chat_id = f"@{parts[1]}"  # Agregar @ para Telegram
+            msg_part = '_'.join(parts[2:])
+            message_ids = parse_message_ids(msg_part)
     
     # Formato simple: solo IDs
     else:
@@ -148,8 +149,6 @@ async def deliver_content(update, context, user_id: int, chat_id, message_ids: l
             txt = get_weighted_random_message()
         except:
             txt = "📚 Contenido entregado."
-        
-        txt += f"\n\n⚠️ *Se borra en {AUTO_DELETE_MINUTES} min.*"
         
         avis = await context.bot.send_message(user_id, txt, parse_mode="Markdown")
         sent_msgs.append(avis.message_id)
