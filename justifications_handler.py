@@ -1,168 +1,180 @@
 # -*- coding: utf-8 -*-
+"""
+JUSTIFICATIONS HANDLER - Sistema de justificaciones protegidas
+CORREGIDO: Parser de deep links con guión como separador
+"""
 import logging
 import asyncio
 import re
+from typing import Optional, Dict, List
+from datetime import datetime
+
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.error import TelegramError
-from config import JUSTIFICATIONS_CHAT_ID, AUTO_DELETE_MINUTES
+
+from config import JUSTIFICATIONS_CHAT_ID, AUTO_DELETE_MINUTES, TZ
 
 logger = logging.getLogger(__name__)
 
-# Cache para auto-eliminación
-user_justification_messages = {}
+# Cache de justificaciones enviadas
+sent_justifications: Dict[int, Dict] = {}
 
-def parse_message_ids(text: str) -> list:
-    """Parsea IDs de mensajes. Soporta: 22, 22-25, 22,23,24"""
-    ids = []
-    if not text:
-        return ids
-    
-    # Solo permitir dígitos, guiones y comas
-    if not re.match(r'^[\d,\-]+$', text):
-        return ids
-    
-    parts = text.replace(',', '-').split('-')
-    for p in parts:
-        p = p.strip()
-        if p.isdigit():
-            ids.append(int(p))
-    
-    return ids
 
-async def handle_justification_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_justification_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     """
-    Procesa solicitudes de contenido.
-    Formatos:
-    - /start 22 (usa JUSTIFICATIONS_CHAT_ID)
-    - /start c_1234567890_22 (canal privado específico)  
-    - /start p_username_22 (canal público - p = public)
-    - /start 22-25 (rango)
-    """
-    if not update.message: 
-        return
+    Maneja /start con parámetros de justificación.
     
+    Formatos soportados:
+    - /start 123 → ID directo, usa JUSTIFICATIONS_CHAT_ID
+    - /start c_1234567890-123 → Canal privado
+    - /start p_username-123 → Canal público (GUIÓN antes del ID)
+    """
+    if not update.message or not update.message.text:
+        return False
+    
+    text = update.message.text.strip()
+    
+    # Debe empezar con /start
+    if not text.startswith('/start'):
+        return False
+    
+    # Extraer parámetro
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        return False
+    
+    param = parts[1].strip()
     user_id = update.effective_user.id
     
-    # Obtener argumento
-    raw_arg = ""
-    if context.args and len(context.args) > 0:
-        raw_arg = context.args[0]
-    else:
-        text = update.message.text or ""
-        parts = text.split()
-        if len(parts) > 1:
-            raw_arg = parts[1]
+    logger.info(f"🔍 Procesando justificación: param='{param}'")
     
-    if not raw_arg:
-        return
+    # Determinar chat_id y message_id
+    chat_id = None
+    message_id = None
     
-    logger.info(f"📥 Solicitud: user={user_id}, arg='{raw_arg}'")
+    # Formato: c_CHANNELID-MSGID (canal privado)
+    if param.startswith('c_'):
+        # Buscar el último guión que separa el message_id
+        rest = param[2:]  # Quitar 'c_'
+        last_dash = rest.rfind('-')
+        
+        if last_dash > 0:
+            channel_part = rest[:last_dash]
+            msg_part = rest[last_dash + 1:]
+            
+            if channel_part.isdigit() and msg_part.isdigit():
+                chat_id = int(f"-100{channel_part}")
+                message_id = int(msg_part)
+                logger.info(f"📍 Canal privado: chat_id={chat_id}, msg_id={message_id}")
     
-    # Determinar canal y mensajes
-    chat_id = JUSTIFICATIONS_CHAT_ID
-    message_ids = []
+    # Formato: p_USERNAME-MSGID (canal público)
+    elif param.startswith('p_'):
+        rest = param[2:]  # Quitar 'p_'
+        last_dash = rest.rfind('-')
+        
+        if last_dash > 0:
+            username = rest[:last_dash]
+            msg_part = rest[last_dash + 1:]
+            
+            if msg_part.isdigit():
+                chat_id = f"@{username}"
+                message_id = int(msg_part)
+                logger.info(f"📍 Canal público: chat_id={chat_id}, msg_id={message_id}")
     
-    # Formato: c_CHANNELID_MSGID (canal privado)
-    if raw_arg.startswith('c_'):
-        parts = raw_arg.split('_')
-        if len(parts) >= 3:
-            chat_id = int(f"-100{parts[1]}")
-            msg_part = '_'.join(parts[2:])
-            message_ids = parse_message_ids(msg_part)
+    # Formato: solo número (usa JUSTIFICATIONS_CHAT_ID)
+    elif param.isdigit():
+        chat_id = JUSTIFICATIONS_CHAT_ID
+        message_id = int(param)
+        logger.info(f"📍 ID directo: chat_id={chat_id}, msg_id={message_id}")
     
-    # Formato: p_USERNAME_MSGID (canal público)
-    elif raw_arg.startswith('p_'):
-        parts = raw_arg.split('_')
-        if len(parts) >= 3:
-            chat_id = f"@{parts[1]}"  # Agregar @ para Telegram
-            msg_part = '_'.join(parts[2:])
-            message_ids = parse_message_ids(msg_part)
-    
-    # Formato simple: solo IDs
-    else:
-        clean = raw_arg
-        for prefix in ['jst_', 'just_', 'j_']:
-            clean = clean.replace(prefix, '')
-        message_ids = parse_message_ids(clean)
-    
-    if not message_ids:
-        logger.error(f"No se extrajeron IDs de: '{raw_arg}'")
+    # No se pudo parsear
+    if chat_id is None or message_id is None:
+        logger.warning(f"⚠️ Formato no reconocido: {param}")
         await update.message.reply_text("❌ Formato inválido.")
-        return
+        return True
     
-    logger.info(f"📋 Entregando {message_ids} de {chat_id}")
-    
-    await deliver_content(update, context, user_id, chat_id, message_ids)
+    # Enviar justificación
+    await send_justification(context, user_id, chat_id, message_id)
+    return True
 
-async def deliver_content(update, context, user_id: int, chat_id, message_ids: list):
-    """Entrega contenido al usuario"""
-    
-    processing = await update.message.reply_text("🔄 Buscando...")
-    
-    sent_msgs = []
-    errors = []
-    
-    for msg_id in message_ids:
-        try:
-            logger.info(f"📤 Copiando {msg_id} de {chat_id} → {user_id}")
-            
-            msg = await context.bot.copy_message(
-                chat_id=user_id,
-                from_chat_id=chat_id,
-                message_id=msg_id,
-                protect_content=True
-            )
-            sent_msgs.append(msg.message_id)
-            logger.info(f"✅ Mensaje {msg_id} entregado")
-            
-        except TelegramError as e:
-            error_str = str(e).lower()
-            logger.error(f"❌ Error copiando {msg_id}: {e}")
-            
-            if "not found" in error_str:
-                errors.append(f"ID {msg_id}: No existe")
-            elif "chat not found" in error_str:
-                errors.append(f"Canal no accesible")
-            else:
-                errors.append(f"ID {msg_id}: Error")
-                
-        except Exception as e:
-            logger.exception(f"❌ Error: {e}")
-            errors.append(f"ID {msg_id}: Error")
-    
+
+async def send_justification(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    source_chat_id,
+    message_id: int
+):
+    """Envía la justificación al usuario"""
     try:
-        await processing.delete()
-    except:
-        pass
-    
-    if errors and not sent_msgs:
-        await update.message.reply_text(
-            f"❌ **No se pudo entregar:**\n" + "\n".join(errors),
-            parse_mode="Markdown"
+        # Limpiar justificaciones previas del usuario
+        await clean_previous_justifications(context, user_id)
+        
+        # Copiar mensaje
+        sent = await context.bot.copy_message(
+            chat_id=user_id,
+            from_chat_id=source_chat_id,
+            message_id=message_id,
+            protect_content=True
         )
+        
+        logger.info(f"✅ Justificación enviada: user={user_id}, source={source_chat_id}, msg={message_id}")
+        
+        # Mensaje motivacional
+        from justification_messages import get_weighted_random_message
+        motivational = get_weighted_random_message()
+        
+        motiv_msg = await context.bot.send_message(
+            chat_id=user_id,
+            text=motivational,
+            disable_notification=True
+        )
+        
+        # Guardar referencias para auto-eliminación
+        sent_justifications[user_id] = {
+            'message_ids': [sent.message_id, motiv_msg.message_id],
+            'sent_at': datetime.now(tz=TZ)
+        }
+        
+        # Programar auto-eliminación
+        if AUTO_DELETE_MINUTES > 0:
+            asyncio.create_task(
+                auto_delete_justification(context, user_id, AUTO_DELETE_MINUTES)
+            )
+    
+    except TelegramError as e:
+        logger.error(f"❌ Error enviando justificación: {e}")
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="❌ No se pudo obtener la justificación. Verifica el enlace."
+        )
+
+
+async def clean_previous_justifications(context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    """Limpia justificaciones previas del usuario"""
+    if user_id not in sent_justifications:
         return
     
-    if sent_msgs:
+    data = sent_justifications.pop(user_id, {})
+    for msg_id in data.get('message_ids', []):
         try:
-            from justification_messages import get_weighted_random_message
-            txt = get_weighted_random_message()
+            await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
         except:
-            txt = "📚 Contenido entregado."
-        
-        avis = await context.bot.send_message(user_id, txt, parse_mode="Markdown")
-        sent_msgs.append(avis.message_id)
-        
-        user_justification_messages[user_id] = sent_msgs
-        asyncio.create_task(schedule_del(context, user_id))
+            pass
 
-async def schedule_del(context, user_id):
-    await asyncio.sleep(AUTO_DELETE_MINUTES * 60)
+
+async def auto_delete_justification(context: ContextTypes.DEFAULT_TYPE, user_id: int, minutes: int):
+    """Auto-elimina justificación después de X minutos"""
+    await asyncio.sleep(minutes * 60)
     
-    if user_id in user_justification_messages:
-        for mid in user_justification_messages[user_id]:
-            try:
-                await context.bot.delete_message(user_id, mid)
-            except:
-                pass
-        del user_justification_messages[user_id]
+    if user_id not in sent_justifications:
+        return
+    
+    data = sent_justifications.pop(user_id, {})
+    for msg_id in data.get('message_ids', []):
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
+        except:
+            pass
+    
+    logger.info(f"🗑️ Auto-eliminada justificación de user {user_id}")
