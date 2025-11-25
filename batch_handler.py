@@ -31,8 +31,10 @@ def is_admin(user_id: int) -> bool:
 def extract_telegram_deep_link(link_text: str, bot_username: str) -> Optional[str]:
     """
     Extrae un link de Telegram y lo convierte en deep link para el bot.
+    IMPORTANTE: Telegram solo permite A-Z, a-z, 0-9, _ y - en start=
+    
     - t.me/c/1234567890/123 → bot?start=c_1234567890_123
-    - t.me/just_clinicase/30 → bot?start=@just_clinicase_30
+    - t.me/just_clinicase/30 → bot?start=p_just_clinicase_30 (p = público)
     - Solo ID (30) → bot?start=30
     """
     match = TELEGRAM_LINK.search(link_text)
@@ -42,11 +44,11 @@ def extract_telegram_deep_link(link_text: str, bot_username: str) -> Optional[st
         message_id = match.group(3)
         
         if private_id:
-            # Canal privado
+            # Canal privado: c_CHANNELID_MSGID
             return f"https://t.me/{bot_username}?start=c_{private_id}_{message_id}"
         elif public_username:
-            # Canal público
-            return f"https://t.me/{bot_username}?start=@{public_username}_{message_id}"
+            # Canal público: p_USERNAME_MSGID (sin @ porque Telegram no lo permite)
+            return f"https://t.me/{bot_username}?start=p_{public_username}_{message_id}"
     
     # Si es solo un número
     if link_text.strip().isdigit():
@@ -192,11 +194,20 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
         item['explanation'] = msg.poll.explanation
         item['explanation_entities'] = msg.poll.explanation_entities
         
-        if msg.poll.type == 'quiz' and msg.poll.correct_option_id is None:
-            await msg.reply_text("⚠️ Quiz sin respuesta. Se usará opción A.")
-            item['correct_option_id'] = 0
-        
-        await msg.reply_text("➕ Encuesta")
+        # Verificar si es quiz y si tiene respuesta detectada
+        if msg.poll.type == 'quiz':
+            if msg.poll.correct_option_id is not None:
+                letra = chr(65 + msg.poll.correct_option_id)  # A, B, C, D
+                await msg.reply_text(f"✅ **ENCUESTA CAPTURADA**\nRespuesta correcta: **{letra}**", parse_mode="Markdown")
+            else:
+                await msg.reply_text(
+                    "⚠️ **QUIZ SIN RESPUESTA DETECTADA**\n"
+                    "Vota en la encuesta antes de enviarla.\n"
+                    "Se enviará con opción A como correcta por defecto."
+                , parse_mode="Markdown")
+                item['correct_option_id'] = 0
+        else:
+            await msg.reply_text("✅ Encuesta capturada")
     
     # ========== SOLO BOTÓN → ASOCIAR AL ANTERIOR ==========
     elif is_button_only_message(raw_text):
@@ -205,7 +216,7 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
         if buttons:
             item['type'] = 'button_for_previous'
             item['reply_markup'] = InlineKeyboardMarkup(buttons)
-            await msg.reply_text("🔗 Botón (→ msg anterior)")
+            await msg.reply_text("🔗 **BOTÓN CAPTURADO** (se asociará al mensaje anterior)", parse_mode="Markdown")
         else:
             return True
     
@@ -218,12 +229,12 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
         item['clean_text'] = clean_text
         item['reply_markup'] = InlineKeyboardMarkup(buttons) if buttons else None
         
-        await msg.reply_text("➕ Mensaje + botón")
+        await msg.reply_text("✅ **MENSAJE + BOTÓN CAPTURADO**", parse_mode="Markdown")
     
     # ========== MENSAJE NORMAL ==========
     else:
         item['type'] = 'forward'
-        await msg.reply_text("➕ Mensaje")
+        await msg.reply_text("✅ Mensaje capturado")
 
     if user_id not in active_batches: 
         active_batches[user_id] = []
