@@ -117,6 +117,15 @@ async def cmd_stop_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await ads_cmd_stop_ads(update, context)
 
 
+async def cmd_list_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista ads activas"""
+    if not is_admin(update.effective_user.id):
+        return
+    
+    from ads_handler import cmd_list_ads as ads_cmd_list_ads
+    await ads_cmd_list_ads(update, context)
+
+
 async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Panel de administrador"""
     if not is_admin(update.effective_user.id):
@@ -130,15 +139,18 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "`/cancelar` - Cancelar proceso actual\n\n"
         "**📢 PUBLICIDAD:**\n"
         "`/set_ads` - Configurar anuncio\n"
-        "`/stop_ads` - Detener anuncio\n\n"
+        "`/list_ads` - Ver ads activas\n"
+        "`/stop_ads` - Detener TODAS las ads\n\n"
         "**📝 SINTAXIS DE BOTONES:**\n"
-        "`%%% t.me/canal/22` → Justificación\n"
-        "`@@@ Texto | link.com` → Botón custom\n"
-        "`@@@ Texto | @usuario` → Link a perfil\n\n"
+        "`%%% t.me/canal/22` → Deep link + chiste\n"
+        "`@@@ Texto | t.me/canal/22` → Deep link SIN chiste\n"
+        "`@@@ Texto | @usuario` → Link directo al perfil\n"
+        "`@@@ Texto | google.com` → Link directo a web\n\n"
         "**⏰ TIEMPOS ADS:**\n"
         "`5m` → 5 minutos\n"
         "`1h` → 1 hora\n"
-        "`8` → 8 horas (legacy)",
+        "`8` → 8 horas (legacy)\n\n"
+        "💡 Las ads se reemplazan (máx 1 visible)",
         parse_mode="Markdown"
     )
 
@@ -172,8 +184,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if handled:
             return
     
-    # Si no está en ningún modo, ignorar
-    # (los comandos ya se manejan por CommandHandler)
+    # NO está en ningún modo → Avisar que use /lote
+    await update.message.reply_text(
+        "⚠️ No hay modo activo.\n\n"
+        "Usa `/lote` para empezar a capturar contenido.",
+        parse_mode="Markdown"
+    )
 
 
 # ============ MAIN ============
@@ -190,6 +206,7 @@ def main():
     app.add_handler(CommandHandler("cancel", cmd_cancelar))
     app.add_handler(CommandHandler("set_ads", cmd_set_ads))
     app.add_handler(CommandHandler("stop_ads", cmd_stop_ads))
+    app.add_handler(CommandHandler("list_ads", cmd_list_ads))
     app.add_handler(CommandHandler("admin", cmd_admin))
     
     # Router de mensajes (después de comandos)
