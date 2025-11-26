@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-BATCH HANDLER - Sistema de lotes para publicación
-CORREGIDO: Deep links con prefijo j_ para %%%, mejor compatibilidad
+BATCH HANDLER - Sistema de lotes SIMPLIFICADO
+- %%% = detecta canal del link + chiste médico
+- @@@ = detecta canal del link + sin chiste (o link directo)
 """
 import logging
 import asyncio
@@ -20,13 +21,14 @@ active_batches: Dict[int, List[Dict[str, Any]]] = {}
 batch_mode: Dict[int, bool] = {}
 
 # ============ PATRONES REGEX ============
-# %%% para justificaciones
+# %%% para contenido con chiste
 JUSTIFICATION_PATTERN = re.compile(r'%%%\s*(https?://t\.me/[^\s]+)', re.IGNORECASE)
 
-# @@@ REQUIERE separador | obligatorio
+# @@@ para botones (con o sin chiste según sea link de mensaje)
 BUTTON_PATTERN = re.compile(r'@@@\s*([^|\n]+?)\s*\|\s*([^\n]+)', re.MULTILINE)
 
 # Detectar links de Telegram (público y privado)
+# t.me/username/123 o t.me/c/123456/123
 TELEGRAM_LINK_PATTERN = re.compile(
     r'(?:https?://)?t\.me/(?:c/(\d+)|([a-zA-Z][a-zA-Z0-9_]*))/(\d+)',
     re.IGNORECASE
@@ -37,43 +39,36 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_USER_IDS
 
 
-def extract_telegram_deep_link(link_text: str, bot_username: str, include_channel: bool = False) -> Optional[str]:
+def extract_deep_link(link_text: str, bot_username: str, with_joke: bool = True) -> Optional[str]:
     """
-    Convierte link de Telegram a deep link válido.
+    Convierte link de Telegram a deep link.
     
-    Si include_channel=False (%%%):
-        t.me/canal/20 → bot?start=j_20 (j_ = justification, usa JUSTIFICATIONS_CHAT_ID)
+    Detecta automáticamente:
+    - t.me/username/123 → p_username_123 (canal público)
+    - t.me/c/123456/123 → c_123456_123 (canal privado)
     
-    Si include_channel=True (@@@):
-        t.me/canal/20 → bot?start=d_p_canal-20 (d_ = delivery sin chiste)
-        t.me/c/123456/20 → bot?start=d_c_123456-20 (canal privado)
+    Si with_joke=False, agrega prefijo n_ (no joke)
     """
     match = TELEGRAM_LINK_PATTERN.search(link_text)
     if not match:
-        # Si es solo número
-        if link_text.strip().isdigit():
-            if include_channel:
-                return None  # No podemos crear deep link sin info del canal
-            return f"https://t.me/{bot_username}?start=j_{link_text.strip()}"
         return None
     
     private_id = match.group(1)      # Para t.me/c/XXXX/YY
     public_username = match.group(2)  # Para t.me/username/YY
     message_id = match.group(3)
     
-    # %%% → Prefijo j_ + message_id (usa JUSTIFICATIONS_CHAT_ID)
-    if not include_channel:
-        return f"https://t.me/{bot_username}?start=j_{message_id}"
+    prefix = "" if with_joke else "n_"
     
-    # @@@ → Incluir info del canal (prefijo d_ = delivery sin chiste)
     if private_id:
-        # Canal privado: d_c_CHANNELID-MSGID
-        return f"https://t.me/{bot_username}?start=d_c_{private_id}-{message_id}"
+        # Canal privado: c_CHATID_MSGID
+        param = f"{prefix}c_{private_id}_{message_id}"
     elif public_username:
-        # Canal público: d_p_USERNAME-MSGID
-        return f"https://t.me/{bot_username}?start=d_p_{public_username}-{message_id}"
+        # Canal público: p_USERNAME_MSGID
+        param = f"{prefix}p_{public_username}_{message_id}"
+    else:
+        return None
     
-    return None
+    return f"https://t.me/{bot_username}?start={param}"
 
 
 def process_button_url(url_text: str) -> str:
@@ -82,19 +77,15 @@ def process_button_url(url_text: str) -> str:
     if not url:
         return ""
     
-    # Ya tiene protocolo
     if url.startswith(('http://', 'https://', 'tg://')):
         return url
     
-    # Es @username
     if url.startswith('@'):
         return f"https://t.me/{url[1:]}"
     
-    # Es link de telegram sin https
     if url.startswith('t.me/'):
         return f"https://{url}"
     
-    # Es dominio normal
     if '.' in url:
         return f"https://{url}"
     
@@ -131,17 +122,17 @@ async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboar
     """Construye lista de botones desde el texto"""
     buttons = []
     
-    # %%% Justificaciones → DEEP LINK con prefijo j_
+    # %%% → Deep link CON chiste
     for match in JUSTIFICATION_PATTERN.finditer(text):
         link_text = match.group(1).strip()
-        deep_link = extract_telegram_deep_link(link_text, bot_username, include_channel=False)
+        deep_link = extract_deep_link(link_text, bot_username, with_joke=True)
         if deep_link:
             buttons.append([InlineKeyboardButton("VER JUSTIFICACIÓN 💬", url=deep_link)])
-            logger.info(f"✅ %%% Justificación: {deep_link}")
+            logger.info(f"✅ %%% → {deep_link}")
         else:
             logger.warning(f"⚠️ No se pudo crear deep link para: {link_text}")
     
-    # @@@ Botones custom → INTELIGENTE
+    # @@@ → Inteligente (deep link SIN chiste o link directo)
     for match in BUTTON_PATTERN.finditer(text):
         label = match.group(1).strip()
         url_raw = match.group(2).strip()
@@ -149,21 +140,19 @@ async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboar
         if not label or not url_raw:
             continue
         
-        # Detectar si es link de MENSAJE de canal (t.me/canal/NUMERO)
-        telegram_msg_match = TELEGRAM_LINK_PATTERN.search(url_raw)
-        
-        if telegram_msg_match:
-            # Es link de mensaje de canal → DEEP LINK (sin chiste)
-            deep_link = extract_telegram_deep_link(url_raw, bot_username, include_channel=True)
+        # ¿Es link de mensaje de canal?
+        if TELEGRAM_LINK_PATTERN.search(url_raw):
+            # Sí → Deep link SIN chiste
+            deep_link = extract_deep_link(url_raw, bot_username, with_joke=False)
             if deep_link:
                 buttons.append([InlineKeyboardButton(label, url=deep_link)])
-                logger.info(f"✅ @@@ Deep link: {label} → {deep_link}")
+                logger.info(f"✅ @@@ Deep: {label} → {deep_link}")
         else:
-            # Cualquier otra cosa → Link DIRECTO
+            # No → Link directo
             processed_url = process_button_url(url_raw)
             if processed_url:
                 buttons.append([InlineKeyboardButton(label, url=processed_url)])
-                logger.info(f"✅ @@@ Link directo: {label} → {processed_url}")
+                logger.info(f"✅ @@@ Direct: {label} → {processed_url}")
     
     return buttons
 
@@ -189,6 +178,7 @@ async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🔸 `@@@ Texto | t.me/canal/22` → Sin chiste\n"
         "🔸 `@@@ Texto | @usuario` → Link directo\n"
         "🔸 `@@@ Texto | web.com` → Link directo\n\n"
+        "✨ **Detecta el canal automáticamente del link**\n\n"
         "⚠️ Botón solo → se pega al mensaje anterior\n\n"
         "**/enviar** para publicar",
         parse_mode="Markdown"
