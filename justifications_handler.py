@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 JUSTIFICATIONS HANDLER - Sistema de entregas protegidas
-MEJORADO: Mensaje cargando, elimina /start, mejor UX
+MEJORADO: Sin borrar /start del usuario, eliminación en paralelo sin lag
 """
 import logging
 import asyncio
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime
 
 from telegram import Update
@@ -16,7 +16,7 @@ from config import JUSTIFICATIONS_CHAT_ID, AUTO_DELETE_MINUTES, TZ
 
 logger = logging.getLogger(__name__)
 
-# Cache de entregas enviadas
+# Cache de entregas enviadas (solo contenido del bot, NO /start del usuario)
 sent_justifications: Dict[int, Dict] = {}
 
 
@@ -44,7 +44,6 @@ async def handle_justification_start(update: Update, context: ContextTypes.DEFAU
         param = parts[1].strip()
     
     user_id = update.effective_user.id
-    user_msg_id = update.message.message_id
     
     logger.info(f"🔍 Procesando deep link: param='{param}'")
     
@@ -118,8 +117,8 @@ async def handle_justification_start(update: Update, context: ContextTypes.DEFAU
         await update.message.reply_text("❌ Enlace inválido.")
         return True
     
-    # Enviar contenido (pasamos el ID del mensaje /start para eliminarlo)
-    await send_content(context, user_id, chat_id, message_id, is_justification, user_msg_id)
+    # Enviar contenido
+    await send_content(context, user_id, chat_id, message_id, is_justification)
     return True
 
 
@@ -128,14 +127,16 @@ async def send_content(
     user_id: int,
     source_chat_id: int,
     message_id: int,
-    is_justification: bool = True,
-    user_command_msg_id: int = None
+    is_justification: bool = True
 ):
     """Envía contenido al usuario"""
     loading_msg = None
     try:
-        # Limpiar entregas previas (incluye /start anteriores)
-        await clean_previous(context, user_id)
+        # Limpiar entregas previas EN SEGUNDO PLANO (sin esperar, sin lag)
+        asyncio.create_task(clean_previous_background(context, user_id))
+        
+        # Pequeña pausa para que se procese la limpieza
+        await asyncio.sleep(0.1)
         
         # MENSAJE DE CARGANDO
         loading_msg = await context.bot.send_message(
@@ -160,6 +161,7 @@ async def send_content(
         
         logger.info(f"✅ Enviado: user={user_id}, chat={source_chat_id}, msg={message_id}, tipo={'%%%' if is_justification else '@@@'}")
         
+        # Solo guardamos el contenido del bot (NO el /start del usuario)
         message_ids = [sent.message_id]
         
         # Mensaje según tipo
@@ -179,11 +181,7 @@ async def send_content(
         )
         message_ids.append(msg.message_id)
         
-        # TAMBIÉN guardar el ID del comando /start para eliminarlo después
-        if user_command_msg_id:
-            message_ids.append(user_command_msg_id)
-        
-        # Guardar para auto-eliminación
+        # Guardar para auto-eliminación (solo mensajes del bot)
         sent_justifications[user_id] = {
             'message_ids': message_ids,
             'sent_at': datetime.now(tz=TZ)
@@ -207,8 +205,11 @@ async def send_content(
         )
 
 
-async def clean_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Limpia entregas previas (contenido + mensajes + /start) - SIN LAG"""
+async def clean_previous_background(context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    """
+    Limpia entregas previas EN PARALELO (sin lag).
+    Se ejecuta en segundo plano sin bloquear.
+    """
     if user_id not in sent_justifications:
         return
     
@@ -218,19 +219,19 @@ async def clean_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
     if not message_ids:
         return
     
-    # BORRADO EN PARALELO - Sin esperar cada uno
-    async def delete_one(msg_id):
+    # Crear tareas de eliminación en paralelo
+    async def delete_msg(msg_id):
         try:
             await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
         except:
             pass
     
-    # Ejecutar todos los borrados en paralelo (sin bloquear)
-    await asyncio.gather(*[delete_one(mid) for mid in message_ids], return_exceptions=True)
+    # Ejecutar todas las eliminaciones en paralelo
+    await asyncio.gather(*[delete_msg(mid) for mid in message_ids], return_exceptions=True)
 
 
 async def auto_delete(context: ContextTypes.DEFAULT_TYPE, user_id: int, minutes: int):
-    """Auto-elimina después de X minutos - SIN LAG"""
+    """Auto-elimina después de X minutos"""
     await asyncio.sleep(minutes * 60)
     
     if user_id not in sent_justifications:
@@ -242,12 +243,13 @@ async def auto_delete(context: ContextTypes.DEFAULT_TYPE, user_id: int, minutes:
     if not message_ids:
         return
     
-    # BORRADO EN PARALELO
-    async def delete_one(msg_id):
+    # Eliminar en paralelo
+    async def delete_msg(msg_id):
         try:
             await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
         except:
             pass
     
-    await asyncio.gather(*[delete_one(mid) for mid in message_ids], return_exceptions=True)
+    await asyncio.gather(*[delete_msg(mid) for mid in message_ids], return_exceptions=True)
+    
     logger.info(f"🗑️ Auto-eliminado: user {user_id}")
