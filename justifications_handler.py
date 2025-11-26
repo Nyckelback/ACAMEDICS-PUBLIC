@@ -208,30 +208,46 @@ async def send_content(
 
 
 async def clean_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Limpia entregas previas (contenido + mensajes + /start)"""
+    """Limpia entregas previas (contenido + mensajes + /start) - SIN LAG"""
     if user_id not in sent_justifications:
         return
     
     data = sent_justifications.pop(user_id, {})
-    for msg_id in data.get('message_ids', []):
+    message_ids = data.get('message_ids', [])
+    
+    if not message_ids:
+        return
+    
+    # BORRADO EN PARALELO - Sin esperar cada uno
+    async def delete_one(msg_id):
         try:
             await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
         except:
             pass
+    
+    # Ejecutar todos los borrados en paralelo (sin bloquear)
+    await asyncio.gather(*[delete_one(mid) for mid in message_ids], return_exceptions=True)
 
 
 async def auto_delete(context: ContextTypes.DEFAULT_TYPE, user_id: int, minutes: int):
-    """Auto-elimina después de X minutos"""
+    """Auto-elimina después de X minutos - SIN LAG"""
     await asyncio.sleep(minutes * 60)
     
     if user_id not in sent_justifications:
         return
     
     data = sent_justifications.pop(user_id, {})
-    for msg_id in data.get('message_ids', []):
+    message_ids = data.get('message_ids', [])
+    
+    if not message_ids:
+        return
+    
+    # BORRADO EN PARALELO
+    async def delete_one(msg_id):
         try:
             await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
         except:
             pass
     
+    await asyncio.gather(*[delete_one(mid) for mid in message_ids], return_exceptions=True)
     logger.info(f"🗑️ Auto-eliminado: user {user_id}")
