@@ -20,32 +20,33 @@ logger = logging.getLogger(__name__)
 sent_justifications: Dict[int, Dict] = {}
 
 
-async def handle_justification_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+async def handle_justification_start(update: Update, context: ContextTypes.DEFAULT_TYPE, param: str = None) -> bool:
     """
     Maneja /start con parámetros de entrega.
     
     Formatos:
-    - /start 123 → %%% usa JUSTIFICATIONS_CHAT_ID + chiste médico
-    - /start d_p_USERNAME-123 → @@@ canal público + mensaje general
-    - /start d_c_CHANNELID-123 → @@@ canal privado + mensaje general
+    - j_123 → %%% usa JUSTIFICATIONS_CHAT_ID + chiste médico
+    - d_p_USERNAME-123 → @@@ canal público + mensaje general
+    - d_c_CHANNELID-123 → @@@ canal privado + mensaje general
+    - 123 (legacy) → igual que j_123
     """
-    if not update.message or not update.message.text:
+    if not update.message:
         return False
     
-    text = update.message.text.strip()
+    # Si no se pasó param, intentar extraer del texto (fallback)
+    if param is None:
+        text = (update.message.text or "").strip()
+        if not text.startswith('/start'):
+            return False
+        parts = text.split(maxsplit=1)
+        if len(parts) < 2:
+            return False
+        param = parts[1].strip()
     
-    if not text.startswith('/start'):
-        return False
-    
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        return False
-    
-    param = parts[1].strip()
     user_id = update.effective_user.id
-    user_msg_id = update.message.message_id  # ID del mensaje /start del usuario
+    user_msg_id = update.message.message_id
     
-    logger.info(f"🔍 Procesando: param='{param}'")
+    logger.info(f"🔍 Procesando deep link: param='{param}'")
     
     chat_id = None
     message_id = None
