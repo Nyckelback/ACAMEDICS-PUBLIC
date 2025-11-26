@@ -177,15 +177,11 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra tu ID y si eres admin - SIEMPRE responde"""
+    """Muestra tu ID - SIEMPRE responde"""
     user_id = update.effective_user.id
-    is_adm = is_admin(user_id)
     
     await update.message.reply_text(
-        f"🆔 **Tu información:**\n\n"
-        f"• User ID: `{user_id}`\n"
-        f"• Es admin: {'✅ SÍ' if is_adm else '❌ NO'}\n"
-        f"• Admins configurados: `{ADMIN_USER_IDS}`",
+        f"🆔 Tu User ID: `{user_id}`",
         parse_mode="Markdown"
     )
 
