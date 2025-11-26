@@ -28,9 +28,9 @@ JUSTIFICATION_PATTERN = re.compile(r'%%%\s*(https?://t\.me/[^\s]+)', re.IGNORECA
 BUTTON_PATTERN = re.compile(r'@@@\s*([^|\n]+?)\s*\|\s*([^\n]+)', re.MULTILINE)
 
 # Detectar links de Telegram (público y privado)
-# t.me/username/123 o t.me/c/123456/123
+# t.me/username/123 o t.me/c/123456/123 o t.me/c/123456/71-72-73
 TELEGRAM_LINK_PATTERN = re.compile(
-    r'(?:https?://)?t\.me/(?:c/(\d+)|([a-zA-Z][a-zA-Z0-9_]*))/(\d+)',
+    r'(?:https?://)?t\.me/(?:c/(\d+)|([a-zA-Z][a-zA-Z0-9_]*))/(\d+(?:-\d+)*)',
     re.IGNORECASE
 )
 
@@ -43,11 +43,12 @@ def extract_deep_link(link_text: str, bot_username: str, with_joke: bool = True)
     """
     Convierte link de Telegram a deep link.
     
-    Detecta automáticamente:
-    - t.me/username/123 → p_username_123 (canal público)
-    - t.me/c/123456/123 → c_123456_123 (canal privado)
+    Soporta múltiples mensajes: t.me/canal/71-72-73
     
-    Si with_joke=False, agrega prefijo n_ (no joke)
+    Detecta automáticamente:
+    - t.me/username/123 → p_username_123
+    - t.me/c/123456/123 → c_123456_123
+    - t.me/c/123456/71-72-73 → c_123456_71-72-73
     """
     match = TELEGRAM_LINK_PATTERN.search(link_text)
     if not match:
@@ -55,16 +56,16 @@ def extract_deep_link(link_text: str, bot_username: str, with_joke: bool = True)
     
     private_id = match.group(1)      # Para t.me/c/XXXX/YY
     public_username = match.group(2)  # Para t.me/username/YY
-    message_id = match.group(3)
+    message_ids = match.group(3)      # Puede ser "123" o "71-72-73"
     
     prefix = "" if with_joke else "n_"
     
     if private_id:
-        # Canal privado: c_CHATID_MSGID
-        param = f"{prefix}c_{private_id}_{message_id}"
+        # Canal privado: c_CHATID_MSGIDS
+        param = f"{prefix}c_{private_id}_{message_ids}"
     elif public_username:
-        # Canal público: p_USERNAME_MSGID
-        param = f"{prefix}p_{public_username}_{message_id}"
+        # Canal público: p_USERNAME_MSGIDS
+        param = f"{prefix}p_{public_username}_{message_ids}"
     else:
         return None
     
