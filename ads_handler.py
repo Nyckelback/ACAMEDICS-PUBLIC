@@ -172,14 +172,15 @@ async def handle_ads_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return False
     
     msg = update.message
-    text = msg.text or ""
+    text = msg.text or msg.caption or ""
     
     # PASO 1: Esperando contenido
     if ads_state == ADS_STATE_WAITING_CONTENT:
-        # Guardar referencia del mensaje
+        # Guardar referencia del mensaje Y EL TEXTO ORIGINAL
         context.user_data['ads_content'] = {
             'chat_id': msg.chat_id,
-            'msg_id': msg.message_id
+            'msg_id': msg.message_id,
+            'original_text': text  # ← GUARDAR TEXTO PARA PROCESAR @@@
         }
         context.user_data['ads_state'] = ADS_STATE_WAITING_INTERVAL
         
@@ -243,25 +244,61 @@ async def handle_ads_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def ads_loop(context: ContextTypes.DEFAULT_TYPE, user_id: int, content: dict, interval_minutes: int):
-    """Loop de publicidad - INTELIGENTE: borra ad anterior antes de enviar"""
+    """Loop de publicidad - Procesa botones @@@ y %%%, slot único"""
+    from batch_handler import (
+        build_buttons, has_special_syntax, clean_special_syntax
+    )
+    
     try:
+        # Obtener username del bot
+        bot_info = await context.bot.get_me()
+        bot_username = bot_info.username
+        
+        # Texto original guardado al configurar
+        original_text = content.get('original_text', '')
+        
         while True:
-            # SIEMPRE borrar el ad anterior (de CUALQUIER ads) antes de enviar
+            # SIEMPRE borrar ad anterior antes de enviar
             await delete_last_ad(context.bot)
-            
-            # Pequeña pausa para evitar rate limits
             await asyncio.sleep(0.5)
             
-            # Enviar nuevo anuncio
             try:
-                sent = await context.bot.copy_message(
-                    chat_id=PUBLIC_CHANNEL_ID,
-                    from_chat_id=content['chat_id'],
-                    message_id=content['msg_id']
-                )
-                # Registrar como último ad global
+                # Si tiene sintaxis @@@ o %%%, procesar botones
+                if original_text and has_special_syntax(original_text):
+                    buttons = await build_buttons(original_text, bot_username)
+                    clean_text = clean_special_syntax(original_text)
+                    
+                    if buttons:
+                        reply_markup = InlineKeyboardMarkup(buttons)
+                        
+                        # Enviar con botones
+                        sent = await context.bot.copy_message(
+                            chat_id=PUBLIC_CHANNEL_ID,
+                            from_chat_id=content['chat_id'],
+                            message_id=content['msg_id'],
+                            caption=clean_text if clean_text else None,
+                            reply_markup=reply_markup
+                        )
+                        logger.info(f"📢 Ad con botones: {sent.message_id}")
+                    else:
+                        # Sin botones válidos
+                        sent = await context.bot.copy_message(
+                            chat_id=PUBLIC_CHANNEL_ID,
+                            from_chat_id=content['chat_id'],
+                            message_id=content['msg_id']
+                        )
+                        logger.info(f"📢 Ad sin botones: {sent.message_id}")
+                else:
+                    # Sin sintaxis especial
+                    sent = await context.bot.copy_message(
+                        chat_id=PUBLIC_CHANNEL_ID,
+                        from_chat_id=content['chat_id'],
+                        message_id=content['msg_id']
+                    )
+                    logger.info(f"📢 Ad normal: {sent.message_id}")
+                
                 await set_last_ad(sent.message_id)
-                logger.info(f"📢 Ad enviado: {sent.message_id} (cada {interval_minutes}m)")
+                
             except Exception as e:
                 logger.error(f"Error enviando anuncio: {e}")
             
@@ -269,5 +306,4 @@ async def ads_loop(context: ContextTypes.DEFAULT_TYPE, user_id: int, content: di
             await asyncio.sleep(interval_minutes * 60)
     
     except asyncio.CancelledError:
-        logger.info(f"🛑 Loop de ads cancelado para user {user_id}")
-        # NO borrar el ad aquí - se borra en cmd_stop_ads si el usuario quiere
+        logger.info(f"🛑 Ads cancelado para user {user_id}")
