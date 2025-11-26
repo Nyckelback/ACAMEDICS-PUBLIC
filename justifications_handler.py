@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Sistema de Contenido Protegido - SIMPLIFICADO
-- Detecta el canal automáticamente del link
-- %%% = con chiste médico
-- @@@ = sin chiste
+Sistema de Contenido Protegido - OPTIMIZADO
+- Cache de canales (respuesta rápida)
+- Borra mensaje anterior al enviar nuevo
 - Eliminación en batch cada AUTO_DELETE_MINUTES
 """
 
@@ -19,8 +18,16 @@ from config import AUTO_DELETE_MINUTES, JUSTIFICATIONS_CHAT_ID, TZ
 
 logger = logging.getLogger(__name__)
 
-# ============ CACHE DE MENSAJES PARA ELIMINAR ============
+# ============ CACHE ============
+# Cache de canales: {"username": chat_id}
+channel_cache: Dict[str, int] = {}
+
+# Mensajes pendientes de eliminar: {user_id: [(msg_id, timestamp), ...]}
 pending_deletions: Dict[int, List[Tuple[int, datetime]]] = {}
+
+# Último contenido enviado por usuario (para borrar al enviar nuevo)
+last_sent: Dict[int, List[int]] = {}
+
 deletion_lock = asyncio.Lock()
 
 
@@ -67,7 +74,7 @@ async def cleanup_old_messages(context: ContextTypes.DEFAULT_TYPE):
                 total_deleted += sum(1 for r in results if r is True)
         
         if total_deleted > 0:
-            logger.info(f"🧹 Limpieza: {total_deleted} mensajes eliminados")
+            logger.info(f"🧹 Limpieza batch: {total_deleted} mensajes eliminados")
 
 
 def schedule_cleanup_task(app):
@@ -82,23 +89,54 @@ def schedule_cleanup_task(app):
         logger.info(f"⏰ Limpieza automática cada 60s (elimina > {AUTO_DELETE_MINUTES} min)")
 
 
-# ============ RESOLVER CANAL ============
+# ============ RESOLVER CANAL (CON CACHE) ============
 
 async def resolve_channel(bot, identifier: str) -> Optional[int]:
     """
-    Resuelve identificador a chat_id.
+    Resuelve identificador a chat_id CON CACHE.
     - Si es número: retorna -100{numero}
-    - Si es username: consulta a Telegram
+    - Si es username: consulta a Telegram (solo primera vez)
     """
+    # Si es número, no necesita cache
     if identifier.isdigit():
         return int(f"-100{identifier}")
     
+    # Buscar en cache
+    if identifier in channel_cache:
+        return channel_cache[identifier]
+    
+    # No está en cache, consultar a Telegram
     try:
         chat = await bot.get_chat(f"@{identifier}")
+        channel_cache[identifier] = chat.id
+        logger.info(f"📦 Cache: @{identifier} → {chat.id}")
         return chat.id
     except Exception as e:
         logger.error(f"❌ No se pudo resolver canal @{identifier}: {e}")
         return None
+
+
+# ============ BORRAR MENSAJES ANTERIORES ============
+
+async def delete_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    """Borra los mensajes anteriores del usuario (en paralelo)."""
+    if user_id not in last_sent:
+        return
+    
+    msg_ids = last_sent.pop(user_id, [])
+    if not msg_ids:
+        return
+    
+    async def delete_msg(mid):
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=mid)
+        except:
+            pass
+    
+    # Borrar en paralelo sin esperar
+    asyncio.create_task(
+        asyncio.gather(*[delete_msg(mid) for mid in msg_ids], return_exceptions=True)
+    )
 
 
 # ============ HANDLER PRINCIPAL ============
@@ -110,14 +148,6 @@ async def handle_justification_start(
 ) -> bool:
     """
     Maneja /start con parámetros de contenido.
-    
-    Formatos:
-    - p_USERNAME_MSGIDS  → Canal público (71 o 71-72-73)
-    - c_CHATID_MSGIDS    → Canal privado
-    - n_p_USER_MSGIDS    → Sin chiste
-    - n_c_CHATID_MSGIDS  → Sin chiste
-    - j_MSGID            → Compatibilidad
-    - MSGID (número)     → Compatibilidad
     """
     user_id = update.effective_user.id
     
@@ -154,8 +184,6 @@ async def handle_justification_start(
             
             username = parts[0]
             msg_ids_str = parts[1]
-            
-            # Parsear IDs (puede ser "71" o "71-72-73")
             message_ids = [int(x) for x in msg_ids_str.split('-')]
             
             chat_id = await resolve_channel(context.bot, username)
@@ -175,8 +203,6 @@ async def handle_justification_start(
             
             chat_id = int(f"-100{parts[0]}")
             msg_ids_str = parts[1]
-            
-            # Parsear IDs
             message_ids = [int(x) for x in msg_ids_str.split('-')]
             
             logger.info(f"📥 Privado: chat={chat_id}, msgs={message_ids}")
@@ -200,8 +226,11 @@ async def send_content(
     message_ids: List[int],
     with_joke: bool
 ):
-    """Envía contenido al usuario (puede ser múltiples mensajes)."""
+    """Envía contenido al usuario."""
     now = datetime.now(TZ)
+    
+    # PRIMERO: Borrar mensajes anteriores
+    await delete_previous(context, user_id)
     
     loading_msg = await context.bot.send_message(
         chat_id=user_id,
@@ -209,7 +238,6 @@ async def send_content(
     )
     
     sent_msg_ids = []
-    errors = 0
     
     try:
         # Enviar cada mensaje
@@ -224,7 +252,6 @@ async def send_content(
                 sent_msg_ids.append(sent.message_id)
             except Exception as e:
                 logger.error(f"❌ Error copiando msg {msg_id}: {e}")
-                errors += 1
         
         # Eliminar "cargando"
         try:
@@ -250,8 +277,12 @@ async def send_content(
             chat_id=user_id,
             text=text
         )
+        sent_msg_ids.append(companion_msg.message_id)
         
-        # Agendar eliminación
+        # Guardar para borrar cuando pida otro
+        last_sent[user_id] = sent_msg_ids.copy()
+        
+        # También agendar para batch (por si no pide otro)
         if AUTO_DELETE_MINUTES > 0:
             async with deletion_lock:
                 if user_id not in pending_deletions:
@@ -259,9 +290,8 @@ async def send_content(
                 
                 for mid in sent_msg_ids:
                     pending_deletions[user_id].append((mid, now))
-                pending_deletions[user_id].append((companion_msg.message_id, now))
             
-            logger.info(f"📝 Agendado eliminar {len(sent_msg_ids)+1} msgs en {AUTO_DELETE_MINUTES} min")
+            logger.info(f"📝 {len(sent_msg_ids)} msgs enviados, agendados para eliminar")
         
     except Exception as e:
         logger.error(f"❌ Error enviando contenido: {e}")
