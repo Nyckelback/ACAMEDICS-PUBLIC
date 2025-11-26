@@ -36,7 +36,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args and len(context.args) > 0:
         # Hay parámetro de deep link
         param = context.args[0]
-        logger.info(f"🔗 Deep link recibido: param={param}")
+        user_id = update.effective_user.id
+        logger.info(f"🔗 Deep link recibido: user={user_id}, param={param}")
+        
+        # SI ES ADMIN: Limpiar estados para evitar conflictos
+        if is_admin(user_id):
+            context.user_data.clear()  # Limpiar estado de ads
+            from batch_handler import batch_mode, active_batches
+            batch_mode[user_id] = False  # Desactivar modo lote
+            active_batches.pop(user_id, None)
+            logger.info(f"🧹 Admin {user_id}: estados limpiados para deep link")
         
         from justifications_handler import handle_justification_start
         handled = await handle_justification_start(update, context, param=param)
