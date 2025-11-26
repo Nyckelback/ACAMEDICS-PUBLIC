@@ -37,13 +37,16 @@ def is_admin(user_id: int) -> bool:
     return user_id in ADMIN_USER_IDS
 
 
-def extract_telegram_deep_link(link_text: str, bot_username: str) -> Optional[str]:
+def extract_telegram_deep_link(link_text: str, bot_username: str, include_channel: bool = False) -> Optional[str]:
     """
     Convierte link de Telegram a deep link válido.
-    SOLO USA EL MESSAGE_ID - El canal de justificaciones está en config.
     
-    t.me/just_clinicase/20 → bot?start=20
-    t.me/c/1234567890/123 → bot?start=123
+    Si include_channel=False (%%%):
+        t.me/canal/20 → bot?start=20 (usa JUSTIFICATIONS_CHAT_ID)
+    
+    Si include_channel=True (@@@):
+        t.me/canal/20 → bot?start=d_p_canal-20 (incluye info del canal, sin chiste)
+        t.me/c/123456/20 → bot?start=d_c_123456-20 (canal privado, sin chiste)
     """
     match = TELEGRAM_LINK_PATTERN.search(link_text)
     if not match:
@@ -52,10 +55,23 @@ def extract_telegram_deep_link(link_text: str, bot_username: str) -> Optional[st
             return f"https://t.me/{bot_username}?start={link_text.strip()}"
         return None
     
-    # SOLO extraer el message_id
+    private_id = match.group(1)      # Para t.me/c/XXXX/YY
+    public_username = match.group(2)  # Para t.me/username/YY
     message_id = match.group(3)
     
-    return f"https://t.me/{bot_username}?start={message_id}"
+    # %%% → Solo message_id (usa JUSTIFICATIONS_CHAT_ID por defecto)
+    if not include_channel:
+        return f"https://t.me/{bot_username}?start={message_id}"
+    
+    # @@@ → Incluir info del canal (prefijo d_ = delivery sin chiste)
+    if private_id:
+        # Canal privado: d_c_CHANNELID-MSGID
+        return f"https://t.me/{bot_username}?start=d_c_{private_id}-{message_id}"
+    elif public_username:
+        # Canal público: d_p_USERNAME-MSGID
+        return f"https://t.me/{bot_username}?start=d_p_{public_username}-{message_id}"
+    
+    return None
 
 
 def process_button_url(url_text: str) -> str:
@@ -115,17 +131,17 @@ async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboar
     """Construye lista de botones desde el texto"""
     buttons = []
     
-    # %%% Justificaciones
+    # %%% Justificaciones → DEEP LINK al bot (con chiste médico)
     for match in JUSTIFICATION_PATTERN.finditer(text):
         link_text = match.group(1).strip()
-        deep_link = extract_telegram_deep_link(link_text, bot_username)
+        deep_link = extract_telegram_deep_link(link_text, bot_username, include_channel=False)
         if deep_link:
             buttons.append([InlineKeyboardButton("VER JUSTIFICACIÓN 💬", url=deep_link)])
-            logger.info(f"✅ Justificación deep link: {deep_link}")
+            logger.info(f"✅ %%% Justificación: {deep_link}")
         else:
             logger.warning(f"⚠️ No se pudo crear deep link para: {link_text}")
     
-    # @@@ Botones custom (REQUIERE |)
+    # @@@ Botones custom → INTELIGENTE
     for match in BUTTON_PATTERN.finditer(text):
         label = match.group(1).strip()
         url_raw = match.group(2).strip()
@@ -133,18 +149,21 @@ async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboar
         if not label or not url_raw:
             continue
         
-        # Si es link de Telegram, crear deep link
-        if TELEGRAM_LINK_PATTERN.search(url_raw):
-            deep_link = extract_telegram_deep_link(url_raw, bot_username)
+        # Detectar si es link de MENSAJE de canal (t.me/canal/NUMERO)
+        telegram_msg_match = TELEGRAM_LINK_PATTERN.search(url_raw)
+        
+        if telegram_msg_match:
+            # Es link de mensaje de canal → DEEP LINK (sin chiste)
+            deep_link = extract_telegram_deep_link(url_raw, bot_username, include_channel=True)
             if deep_link:
                 buttons.append([InlineKeyboardButton(label, url=deep_link)])
-                logger.info(f"✅ Botón custom deep link: {label} → {deep_link}")
+                logger.info(f"✅ @@@ Deep link (sin chiste): {label} → {deep_link}")
         else:
-            # URL normal
+            # Cualquier otra cosa → Link DIRECTO
             processed_url = process_button_url(url_raw)
             if processed_url:
                 buttons.append([InlineKeyboardButton(label, url=processed_url)])
-                logger.info(f"✅ Botón custom URL: {label} → {processed_url}")
+                logger.info(f"✅ @@@ Link directo: {label} → {processed_url}")
     
     return buttons
 
@@ -167,9 +186,12 @@ async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         "📦 **MODO LOTE ACTIVADO**\n\n"
-        "Envía todo (Encuestas, Fotos, Textos).\n\n"
-        "🔹 Justificación: `%%% t.me/canal/22`\n"
-        "🔸 Botón: `@@@ Texto | link` o `@@@ Texto | @user`\n"
+        "Envía contenido (Encuestas, Fotos, Textos).\n\n"
+        "**Sintaxis de botones:**\n"
+        "🔹 `%%% t.me/canal/22` → Con chiste médico\n"
+        "🔸 `@@@ Texto | t.me/canal/22` → Sin chiste\n"
+        "🔸 `@@@ Texto | @usuario` → Link directo\n"
+        "🔸 `@@@ Texto | web.com` → Link directo\n\n"
         "⚠️ Botón solo → se pega al mensaje anterior\n\n"
         "**/enviar** para publicar",
         parse_mode="Markdown"
@@ -220,20 +242,17 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Si es botón para mensaje anterior
             if item_type == 'button_for_previous':
-                if last_sent_message:
-                    # Acumular botones
-                    pending_buttons.extend(item.get('buttons_list', []))
-                else:
-                    # No hay mensaje anterior - enviar con placeholder
-                    buttons = item.get('buttons_list', [])
-                    if buttons:
-                        sent = await context.bot.send_message(
-                            chat_id=PUBLIC_CHANNEL_ID,
-                            text="💭 Contenido disponible:",
-                            reply_markup=InlineKeyboardMarkup(buttons)
-                        )
-                        last_sent_message = sent
-                        count += 1
+                # Siempre acumular los botones
+                pending_buttons.extend(item.get('buttons_list', []))
+                
+                # Si no hay mensaje anterior, crear placeholder
+                if not last_sent_message:
+                    sent = await context.bot.send_message(
+                        chat_id=PUBLIC_CHANNEL_ID,
+                        text="💭 Contenido disponible:"
+                    )
+                    last_sent_message = sent
+                    count += 1
                 continue
             
             # Antes de enviar el siguiente mensaje, aplicar botones pendientes
