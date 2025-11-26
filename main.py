@@ -31,16 +31,19 @@ def is_admin(user_id: int) -> bool:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /start - maneja justificaciones o bienvenida"""
-    text = update.message.text or ""
     
-    # Si tiene parámetros, puede ser justificación
-    if ' ' in text:
+    # MÉTODO ROBUSTO: Verificar context.args (más confiable que parsear texto)
+    if context.args and len(context.args) > 0:
+        # Hay parámetro de deep link
+        param = context.args[0]
+        logger.info(f"🔗 Deep link recibido: param={param}")
+        
         from justifications_handler import handle_justification_start
-        handled = await handle_justification_start(update, context)
+        handled = await handle_justification_start(update, context, param=param)
         if handled:
             return
     
-    # Bienvenida normal
+    # Bienvenida normal (sin parámetros)
     await update.message.reply_text(
         "👋 ¡Bienvenido!\n\n"
         "Este bot envía casos clínicos educativos.\n"
