@@ -112,19 +112,19 @@ async def handle_justification_start(
     Maneja /start con parámetros de contenido.
     
     Formatos:
-    - p_USERNAME_MSGID  → Canal público (con chiste)
-    - c_CHATID_MSGID    → Canal privado (con chiste)
-    - n_p_USER_MSGID    → Sin chiste (n = no joke)
-    - n_c_CHATID_MSGID  → Sin chiste
-    - j_MSGID           → Compatibilidad (usa JUSTIFICATIONS_CHAT_ID)
-    - MSGID (número)    → Compatibilidad (usa JUSTIFICATIONS_CHAT_ID)
+    - p_USERNAME_MSGIDS  → Canal público (71 o 71-72-73)
+    - c_CHATID_MSGIDS    → Canal privado
+    - n_p_USER_MSGIDS    → Sin chiste
+    - n_c_CHATID_MSGIDS  → Sin chiste
+    - j_MSGID            → Compatibilidad
+    - MSGID (número)     → Compatibilidad
     """
     user_id = update.effective_user.id
     
     # ========== COMPATIBILIDAD: Solo número ==========
     if param.isdigit():
         logger.info(f"📥 Compat: msg={param} → JUSTIFICATIONS")
-        await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, int(param), True)
+        await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [int(param)], True)
         return True
     
     # ========== COMPATIBILIDAD: j_MSGID ==========
@@ -132,50 +132,55 @@ async def handle_justification_start(
         try:
             message_id = int(param[2:])
             logger.info(f"📥 Compat j_: msg={message_id} → JUSTIFICATIONS")
-            await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, message_id, True)
+            await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [message_id], True)
             return True
         except:
             pass
     
     # ========== NUEVO FORMATO ==========
-    # Detectar si tiene prefijo 'n_' (sin chiste)
     with_joke = True
     working_param = param
     
     if param.startswith('n_'):
         with_joke = False
-        working_param = param[2:]  # Quitar n_
+        working_param = param[2:]
     
     try:
-        # p_USERNAME_MSGID (canal público)
+        # p_USERNAME_MSGIDS (canal público)
         if working_param.startswith('p_'):
-            parts = working_param[2:].rsplit('_', 1)  # rsplit para manejar usernames con _
+            parts = working_param[2:].rsplit('_', 1)
             if len(parts) != 2:
                 raise ValueError("Formato inválido")
             
             username = parts[0]
-            message_id = int(parts[1])
+            msg_ids_str = parts[1]
+            
+            # Parsear IDs (puede ser "71" o "71-72-73")
+            message_ids = [int(x) for x in msg_ids_str.split('-')]
             
             chat_id = await resolve_channel(context.bot, username)
             if not chat_id:
                 await update.message.reply_text("❌ No se pudo acceder al canal")
                 return True
             
-            logger.info(f"📥 Público: @{username} → chat={chat_id}, msg={message_id}")
-            await send_content(context, user_id, chat_id, message_id, with_joke)
+            logger.info(f"📥 Público: @{username} → chat={chat_id}, msgs={message_ids}")
+            await send_content(context, user_id, chat_id, message_ids, with_joke)
             return True
         
-        # c_CHATID_MSGID (canal privado)
+        # c_CHATID_MSGIDS (canal privado)
         if working_param.startswith('c_'):
             parts = working_param[2:].split('_')
             if len(parts) != 2:
                 raise ValueError("Formato inválido")
             
             chat_id = int(f"-100{parts[0]}")
-            message_id = int(parts[1])
+            msg_ids_str = parts[1]
             
-            logger.info(f"📥 Privado: chat={chat_id}, msg={message_id}")
-            await send_content(context, user_id, chat_id, message_id, with_joke)
+            # Parsear IDs
+            message_ids = [int(x) for x in msg_ids_str.split('-')]
+            
+            logger.info(f"📥 Privado: chat={chat_id}, msgs={message_ids}")
+            await send_content(context, user_id, chat_id, message_ids, with_joke)
             return True
         
     except (ValueError, IndexError) as e:
@@ -192,10 +197,10 @@ async def send_content(
     context: ContextTypes.DEFAULT_TYPE,
     user_id: int,
     source_chat_id: int,
-    message_id: int,
+    message_ids: List[int],
     with_joke: bool
 ):
-    """Envía contenido al usuario."""
+    """Envía contenido al usuario (puede ser múltiples mensajes)."""
     now = datetime.now(TZ)
     
     loading_msg = await context.bot.send_message(
@@ -203,18 +208,36 @@ async def send_content(
         text="⏳ Obteniendo contenido..."
     )
     
+    sent_msg_ids = []
+    errors = 0
+    
     try:
-        sent = await context.bot.copy_message(
-            chat_id=user_id,
-            from_chat_id=source_chat_id,
-            message_id=message_id,
-            protect_content=True
-        )
+        # Enviar cada mensaje
+        for msg_id in message_ids:
+            try:
+                sent = await context.bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=source_chat_id,
+                    message_id=msg_id,
+                    protect_content=True
+                )
+                sent_msg_ids.append(sent.message_id)
+            except Exception as e:
+                logger.error(f"❌ Error copiando msg {msg_id}: {e}")
+                errors += 1
         
+        # Eliminar "cargando"
         try:
             await context.bot.delete_message(chat_id=user_id, message_id=loading_msg.message_id)
         except:
             pass
+        
+        if not sent_msg_ids:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="❌ No se pudo obtener el contenido."
+            )
+            return
         
         # Mensaje de acompañamiento
         if with_joke:
@@ -234,10 +257,11 @@ async def send_content(
                 if user_id not in pending_deletions:
                     pending_deletions[user_id] = []
                 
-                pending_deletions[user_id].append((sent.message_id, now))
+                for mid in sent_msg_ids:
+                    pending_deletions[user_id].append((mid, now))
                 pending_deletions[user_id].append((companion_msg.message_id, now))
             
-            logger.info(f"📝 Agendado eliminar en {AUTO_DELETE_MINUTES} min: user={user_id}")
+            logger.info(f"📝 Agendado eliminar {len(sent_msg_ids)+1} msgs en {AUTO_DELETE_MINUTES} min")
         
     except Exception as e:
         logger.error(f"❌ Error enviando contenido: {e}")
