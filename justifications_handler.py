@@ -1,40 +1,87 @@
 # -*- coding: utf-8 -*-
 """
-Sistema de Contenido Protegido - OPTIMIZADO
-- Cache de canales (respuesta rápida)
-- Borra mensaje anterior al enviar nuevo
-- Eliminación en batch cada AUTO_DELETE_MINUTES
+Sistema de Contenido Protegido - VERSIÓN FINAL
+Compatible con main.py actual
+Soporta TODOS los formatos de deep link
 """
 
 import logging
 import asyncio
+import re
 from typing import Dict, List, Tuple, Optional
 from datetime import datetime, timedelta
 
 from telegram import Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters
+from telegram.error import TelegramError
 
-from config import AUTO_DELETE_MINUTES, JUSTIFICATIONS_CHAT_ID, TZ
+from config import TZ
 
 logger = logging.getLogger(__name__)
 
-# ============ CACHE ============
-# Cache de canales: {"username": chat_id}
+# ============ CONFIGURACIÓN ============
+# Importar desde config, con fallbacks
+try:
+    from config import AUTO_DELETE_MINUTES
+except ImportError:
+    AUTO_DELETE_MINUTES = 10
+
+try:
+    from config import JUSTIFICATIONS_CHAT_ID
+except ImportError:
+    JUSTIFICATIONS_CHAT_ID = -1003058530208
+
+# ============ CACHE Y ESTADO ============
 channel_cache: Dict[str, int] = {}
-
-# Mensajes pendientes de eliminar: {user_id: [(msg_id, timestamp), ...]}
 pending_deletions: Dict[int, List[Tuple[int, datetime]]] = {}
-
-# Último contenido enviado por usuario (para borrar al enviar nuevo)
 last_sent: Dict[int, List[int]] = {}
-
 deletion_lock = asyncio.Lock()
+
+
+# ============ RESOLVER CANAL (CON CACHE) ============
+
+async def resolve_channel(bot, identifier: str) -> Optional[int]:
+    """
+    Resuelve identificador a chat_id CON CACHE.
+    """
+    if identifier.isdigit():
+        return int(f"-100{identifier}")
+    
+    if identifier in channel_cache:
+        return channel_cache[identifier]
+    
+    try:
+        chat = await bot.get_chat(f"@{identifier}")
+        channel_cache[identifier] = chat.id
+        logger.info(f"📦 Cache: @{identifier} → {chat.id}")
+        return chat.id
+    except Exception as e:
+        logger.error(f"❌ No se pudo resolver canal @{identifier}: {e}")
+        return None
+
+
+# ============ ELIMINAR MENSAJES ANTERIORES ============
+
+async def delete_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
+    """Borra los mensajes anteriores del usuario inmediatamente."""
+    if user_id not in last_sent:
+        return
+    
+    msg_ids = last_sent.pop(user_id, [])
+    if not msg_ids:
+        return
+    
+    for mid in msg_ids:
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=mid)
+        except:
+            pass
 
 
 # ============ LIMPIEZA PERIÓDICA ============
 
 async def cleanup_old_messages(context: ContextTypes.DEFAULT_TYPE):
-    """Elimina mensajes viejos en batch cada minuto."""
+    """Elimina mensajes viejos en batch."""
     async with deletion_lock:
         now = datetime.now(TZ)
         cutoff = now - timedelta(minutes=AUTO_DELETE_MINUTES)
@@ -44,7 +91,6 @@ async def cleanup_old_messages(context: ContextTypes.DEFAULT_TYPE):
         
         for user_id in users_to_clean:
             messages = pending_deletions.get(user_id, [])
-            
             to_delete = []
             to_keep = []
             
@@ -59,119 +105,154 @@ async def cleanup_old_messages(context: ContextTypes.DEFAULT_TYPE):
             else:
                 pending_deletions.pop(user_id, None)
             
-            if to_delete:
-                async def delete_msg(uid, mid):
-                    try:
-                        await context.bot.delete_message(chat_id=uid, message_id=mid)
-                        return True
-                    except:
-                        return False
-                
-                results = await asyncio.gather(
-                    *[delete_msg(user_id, mid) for mid in to_delete],
-                    return_exceptions=True
-                )
-                total_deleted += sum(1 for r in results if r is True)
+            for mid in to_delete:
+                try:
+                    await context.bot.delete_message(chat_id=user_id, message_id=mid)
+                    total_deleted += 1
+                except:
+                    pass
         
         if total_deleted > 0:
-            logger.info(f"🧹 Limpieza batch: {total_deleted} mensajes eliminados")
+            logger.info(f"🧹 Limpieza: {total_deleted} mensajes eliminados")
 
 
-def schedule_cleanup_task(app):
-    """Programa la tarea de limpieza periódica."""
-    if AUTO_DELETE_MINUTES > 0:
-        app.job_queue.run_repeating(
-            cleanup_old_messages,
-            interval=60,
-            first=10,
-            name="cleanup_messages"
-        )
-        logger.info(f"⏰ Limpieza automática cada 60s (elimina > {AUTO_DELETE_MINUTES} min)")
+# ============ ENVIAR CONTENIDO ============
 
-
-# ============ RESOLVER CANAL (CON CACHE) ============
-
-async def resolve_channel(bot, identifier: str) -> Optional[int]:
-    """
-    Resuelve identificador a chat_id CON CACHE.
-    - Si es número: retorna -100{numero}
-    - Si es username: consulta a Telegram (solo primera vez)
-    """
-    # Si es número, no necesita cache
-    if identifier.isdigit():
-        return int(f"-100{identifier}")
+async def send_content(
+    context: ContextTypes.DEFAULT_TYPE,
+    user_id: int,
+    source_chat_id: int,
+    message_ids: List[int],
+    with_joke: bool
+):
+    """Envía contenido al usuario."""
+    now = datetime.now(TZ)
     
-    # Buscar en cache
-    if identifier in channel_cache:
-        return channel_cache[identifier]
+    # Borrar mensajes anteriores primero
+    await delete_previous(context, user_id)
     
-    # No está en cache, consultar a Telegram
+    loading_msg = await context.bot.send_message(
+        chat_id=user_id,
+        text="⏳ Obteniendo contenido..."
+    )
+    
+    sent_msg_ids = []
+    
     try:
-        chat = await bot.get_chat(f"@{identifier}")
-        channel_cache[identifier] = chat.id
-        logger.info(f"📦 Cache: @{identifier} → {chat.id}")
-        return chat.id
-    except Exception as e:
-        logger.error(f"❌ No se pudo resolver canal @{identifier}: {e}")
-        return None
-
-
-# ============ BORRAR MENSAJES ANTERIORES ============
-
-async def _delete_msgs_background(bot, user_id: int, msg_ids: List[int]):
-    """Función auxiliar para borrar en background."""
-    for mid in msg_ids:
+        for msg_id in message_ids:
+            try:
+                sent = await context.bot.copy_message(
+                    chat_id=user_id,
+                    from_chat_id=source_chat_id,
+                    message_id=msg_id,
+                    protect_content=True
+                )
+                sent_msg_ids.append(sent.message_id)
+            except Exception as e:
+                logger.error(f"❌ Error copiando msg {msg_id}: {e}")
+        
         try:
-            await bot.delete_message(chat_id=user_id, message_id=mid)
+            await context.bot.delete_message(chat_id=user_id, message_id=loading_msg.message_id)
         except:
             pass
+        
+        if not sent_msg_ids:
+            await context.bot.send_message(
+                chat_id=user_id,
+                text="❌ No se pudo obtener el contenido."
+            )
+            return
+        
+        # Mensaje de acompañamiento
+        if with_joke:
+            try:
+                from justification_messages import get_random_message
+                text = get_random_message()
+            except:
+                text = "📚 ¡Contenido entregado!"
+        else:
+            text = "📦 ¡Contenido entregado!"
+        
+        companion_msg = await context.bot.send_message(
+            chat_id=user_id,
+            text=text
+        )
+        sent_msg_ids.append(companion_msg.message_id)
+        
+        # Guardar para borrar cuando pida otro
+        last_sent[user_id] = sent_msg_ids.copy()
+        
+        # Agendar para batch
+        if AUTO_DELETE_MINUTES > 0:
+            async with deletion_lock:
+                if user_id not in pending_deletions:
+                    pending_deletions[user_id] = []
+                for mid in sent_msg_ids:
+                    pending_deletions[user_id].append((mid, now))
+        
+    except Exception as e:
+        logger.error(f"❌ Error enviando contenido: {e}")
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=loading_msg.message_id)
+        except:
+            pass
+        await context.bot.send_message(
+            chat_id=user_id,
+            text="❌ No se pudo obtener el contenido."
+        )
 
 
-async def delete_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Borra los mensajes anteriores del usuario."""
-    if user_id not in last_sent:
-        return
-    
-    msg_ids = last_sent.pop(user_id, [])
-    if not msg_ids:
-        return
-    
-    # Ejecutar en background sin esperar
-    asyncio.create_task(_delete_msgs_background(context.bot, user_id, msg_ids))
+# ============ PROCESAR PARÁMETRO DE START ============
 
-
-# ============ HANDLER PRINCIPAL ============
-
-async def handle_justification_start(
-    update: Update, 
-    context: ContextTypes.DEFAULT_TYPE,
-    param: str
-) -> bool:
+async def process_start_param(update: Update, context: ContextTypes.DEFAULT_TYPE, param: str) -> bool:
     """
-    Maneja /start con parámetros de contenido.
+    Procesa el parámetro del /start.
+    Soporta TODOS los formatos:
+    - just_30 (formato viejo)
+    - 30 (solo número)
+    - j_30 (con prefijo j)
+    - p_username_30 (canal público)
+    - p_username_30-31-32 (múltiples)
+    - c_123456_30 (canal privado)
+    - n_p_username_30 (sin chiste)
+    - n_c_123456_30 (sin chiste)
     """
     user_id = update.effective_user.id
     
-    # ========== COMPATIBILIDAD: Solo número ==========
+    logger.info(f"🔍 Procesando param: '{param}' de usuario {user_id}")
+    
+    # ========== FORMATO VIEJO: just_30 ==========
+    if param.startswith('just_'):
+        try:
+            message_id = int(param[5:])  # Quitar "just_"
+            logger.info(f"📥 Formato just_: msg={message_id}")
+            await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [message_id], True)
+            return True
+        except ValueError:
+            pass
+    
+    # ========== SOLO NÚMERO: 30 ==========
     if param.isdigit():
-        logger.info(f"📥 Compat: msg={param} → JUSTIFICATIONS")
-        await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [int(param)], True)
+        message_id = int(param)
+        logger.info(f"📥 Solo número: msg={message_id}")
+        await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [message_id], True)
         return True
     
-    # ========== COMPATIBILIDAD: j_MSGID ==========
+    # ========== FORMATO j_30 ==========
     if param.startswith('j_'):
         try:
             message_id = int(param[2:])
-            logger.info(f"📥 Compat j_: msg={message_id} → JUSTIFICATIONS")
+            logger.info(f"📥 Formato j_: msg={message_id}")
             await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [message_id], True)
             return True
         except:
             pass
     
-    # ========== NUEVO FORMATO ==========
+    # ========== NUEVOS FORMATOS ==========
     with_joke = True
     working_param = param
     
+    # Detectar si es sin chiste (prefijo n_)
     if param.startswith('n_'):
         with_joke = False
         working_param = param[2:]
@@ -192,7 +273,7 @@ async def handle_justification_start(
                 await update.message.reply_text("❌ No se pudo acceder al canal")
                 return True
             
-            logger.info(f"📥 Público: @{username} → chat={chat_id}, msgs={message_ids}")
+            logger.info(f"📥 Público: @{username} msgs={message_ids}")
             await send_content(context, user_id, chat_id, message_ids, with_joke)
             return True
         
@@ -206,155 +287,102 @@ async def handle_justification_start(
             msg_ids_str = parts[1]
             message_ids = [int(x) for x in msg_ids_str.split('-')]
             
-            logger.info(f"📥 Privado: chat={chat_id}, msgs={message_ids}")
+            logger.info(f"📥 Privado: chat={chat_id} msgs={message_ids}")
             await send_content(context, user_id, chat_id, message_ids, with_joke)
             return True
         
     except (ValueError, IndexError) as e:
         logger.warning(f"⚠️ Parámetro inválido: {param} → {e}")
-        await update.message.reply_text("❌ Enlace inválido")
-        return True
     
     return False
 
 
-# ============ ENVIAR CONTENIDO ============
+# ============ HANDLER PARA REGEX (MÁXIMA COMPATIBILIDAD) ============
 
-async def send_content(
-    context: ContextTypes.DEFAULT_TYPE,
-    user_id: int,
-    source_chat_id: int,
-    message_ids: List[int],
-    with_joke: bool
-):
-    """Envía contenido al usuario."""
-    now = datetime.now(TZ)
+async def handle_start_regex(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handler usando regex para máxima compatibilidad.
+    Captura /start con cualquier parámetro.
+    FUNCIONA EN PRIMERA VEZ (usuario nuevo).
+    """
+    if not update.message or not update.message.text:
+        return
     
-    # PRIMERO: Borrar mensajes anteriores
-    await delete_previous(context, user_id)
+    text = update.message.text.strip()
     
-    loading_msg = await context.bot.send_message(
-        chat_id=user_id,
-        text="⏳ Obteniendo contenido..."
-    )
+    # Extraer parámetro
+    match = re.match(r'^/start\s+(.+)$', text)
+    if not match:
+        # Solo /start sin parámetro
+        await update.message.reply_text(
+            "👋 ¡Hola! Soy el bot de ACADEMEDS.\n\n"
+            "📚 Usa los botones en el canal para recibir justificaciones.\n"
+            "🔒 El contenido está protegido y se elimina automáticamente."
+        )
+        return
     
-    sent_msg_ids = []
+    param = match.group(1).strip()
+    handled = await process_start_param(update, context, param)
+    
+    if not handled:
+        await update.message.reply_text(
+            "👋 ¡Hola! Soy el bot de ACADEMEDS.\n\n"
+            "📚 Usa los botones en el canal para recibir justificaciones.\n"
+            "🔒 El contenido está protegido y se elimina automáticamente."
+        )
+
+
+# ============ COMPATIBILIDAD: Handler viejo para just_ID ============
+
+async def handle_justification_request(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Handler de compatibilidad para el formato viejo /start just_ID
+    """
+    if not update.message or not update.message.text:
+        return
+    
+    text = update.message.text.strip()
+    
+    # Solo manejar /start just_NÚMERO
+    if not text.startswith("/start just_"):
+        return
     
     try:
-        # Enviar cada mensaje
-        for msg_id in message_ids:
-            try:
-                sent = await context.bot.copy_message(
-                    chat_id=user_id,
-                    from_chat_id=source_chat_id,
-                    message_id=msg_id,
-                    protect_content=True
-                )
-                sent_msg_ids.append(sent.message_id)
-            except Exception as e:
-                logger.error(f"❌ Error copiando msg {msg_id}: {e}")
-        
-        # Eliminar "cargando"
-        try:
-            await context.bot.delete_message(chat_id=user_id, message_id=loading_msg.message_id)
-        except:
-            pass
-        
-        if not sent_msg_ids:
-            await context.bot.send_message(
-                chat_id=user_id,
-                text="❌ No se pudo obtener el contenido."
-            )
-            return
-        
-        # Mensaje de acompañamiento
-        if with_joke:
-            from justification_messages import get_random_message
-            text = get_random_message()
-        else:
-            text = "📦 ¡Contenido entregado!"
-        
-        companion_msg = await context.bot.send_message(
-            chat_id=user_id,
-            text=text
-        )
-        sent_msg_ids.append(companion_msg.message_id)
-        
-        # Guardar para borrar cuando pida otro
-        last_sent[user_id] = sent_msg_ids.copy()
-        
-        # También agendar para batch (por si no pide otro)
-        if AUTO_DELETE_MINUTES > 0:
-            async with deletion_lock:
-                if user_id not in pending_deletions:
-                    pending_deletions[user_id] = []
-                
-                for mid in sent_msg_ids:
-                    pending_deletions[user_id].append((mid, now))
-            
-            logger.info(f"📝 {len(sent_msg_ids)} msgs enviados, agendados para eliminar")
-        
-    except Exception as e:
-        logger.error(f"❌ Error enviando contenido: {e}")
-        
-        try:
-            await context.bot.delete_message(chat_id=user_id, message_id=loading_msg.message_id)
-        except:
-            pass
-        
-        await context.bot.send_message(
-            chat_id=user_id,
-            text="❌ No se pudo obtener el contenido. El enlace puede ser inválido."
-        )
+        message_id = int(text.replace("/start just_", ""))
+        user_id = update.effective_user.id
+        logger.info(f"📥 Compat just_: Usuario {user_id} → msg {message_id}")
+        await send_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [message_id], True)
+    except ValueError:
+        await update.message.reply_text("❌ Link de justificación inválido")
 
 
 # ============ REGISTRAR HANDLERS ============
 
-async def _handle_start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    Maneja /start con o sin parámetros.
-    Si tiene parámetro de contenido, lo procesa.
-    Si no, muestra mensaje de bienvenida.
-    """
-    if not update.message:
-        return
-    
-    # Obtener el parámetro después de /start
-    if context.args and len(context.args) > 0:
-        param = context.args[0]
-        
-        # Verificar si es un parámetro de contenido
-        if (param.isdigit() or 
-            param.startswith('j_') or 
-            param.startswith('p_') or 
-            param.startswith('c_') or
-            param.startswith('n_')):
-            
-            handled = await handle_justification_start(update, context, param)
-            if handled:
-                return
-    
-    # Si no es contenido o no se manejó, mostrar bienvenida
-    await update.message.reply_text(
-        "👋 ¡Hola! Soy el bot de ACADEMEDS.\n\n"
-        "📚 Usa los botones en el canal para recibir justificaciones.\n"
-        "🔒 El contenido está protegido y se elimina automáticamente."
-    )
-
-
 def add_justification_handlers(application):
     """
     Agrega los handlers de justificaciones al bot principal.
+    DEBE ser llamado desde main.py
     """
-    from telegram.ext import CommandHandler
     
-    # Handler para /start (con o sin parámetros)
+    # Handler principal: Captura /start con CUALQUIER parámetro
+    # group=-1 = prioridad MÁS ALTA que otros handlers
     application.add_handler(
-        CommandHandler("start", _handle_start_command),
-        group=0  # Prioridad alta
+        MessageHandler(
+            filters.TEXT & filters.Regex(r'^/start') & filters.ChatType.PRIVATE,
+            handle_start_regex
+        ),
+        group=-1
     )
     
     # Programar limpieza automática
-    schedule_cleanup_task(application)
+    if hasattr(application, 'job_queue') and application.job_queue:
+        application.job_queue.run_repeating(
+            cleanup_old_messages,
+            interval=60,
+            first=10,
+            name="cleanup_messages"
+        )
+        logger.info(f"⏰ Limpieza cada 60s (elimina > {AUTO_DELETE_MINUTES} min)")
     
     logger.info("✅ Handlers de justificaciones registrados")
+    logger.info("   Formatos: just_X, X, j_X, p_user_X, c_id_X, n_*")
