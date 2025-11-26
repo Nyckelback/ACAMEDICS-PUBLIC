@@ -306,3 +306,55 @@ async def send_content(
             chat_id=user_id,
             text="❌ No se pudo obtener el contenido. El enlace puede ser inválido."
         )
+
+
+# ============ REGISTRAR HANDLERS ============
+
+async def _handle_start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Maneja /start con o sin parámetros.
+    Si tiene parámetro de contenido, lo procesa.
+    Si no, muestra mensaje de bienvenida.
+    """
+    if not update.message:
+        return
+    
+    # Obtener el parámetro después de /start
+    if context.args and len(context.args) > 0:
+        param = context.args[0]
+        
+        # Verificar si es un parámetro de contenido
+        if (param.isdigit() or 
+            param.startswith('j_') or 
+            param.startswith('p_') or 
+            param.startswith('c_') or
+            param.startswith('n_')):
+            
+            handled = await handle_justification_start(update, context, param)
+            if handled:
+                return
+    
+    # Si no es contenido o no se manejó, mostrar bienvenida
+    await update.message.reply_text(
+        "👋 ¡Hola! Soy el bot de ACADEMEDS.\n\n"
+        "📚 Usa los botones en el canal para recibir justificaciones.\n"
+        "🔒 El contenido está protegido y se elimina automáticamente."
+    )
+
+
+def add_justification_handlers(application):
+    """
+    Agrega los handlers de justificaciones al bot principal.
+    """
+    from telegram.ext import CommandHandler
+    
+    # Handler para /start (con o sin parámetros)
+    application.add_handler(
+        CommandHandler("start", _handle_start_command),
+        group=0  # Prioridad alta
+    )
+    
+    # Programar limpieza automática
+    schedule_cleanup_task(application)
+    
+    logger.info("✅ Handlers de justificaciones registrados")
