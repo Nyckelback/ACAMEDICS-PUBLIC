@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 BATCH HANDLER - Sistema de lotes para publicación
-CORREGIDO: Deep links, múltiples botones, formato @@@ con |
+CORREGIDO: Deep links con prefijo j_ para %%%, mejor compatibilidad
 """
 import logging
 import asyncio
@@ -20,7 +20,7 @@ active_batches: Dict[int, List[Dict[str, Any]]] = {}
 batch_mode: Dict[int, bool] = {}
 
 # ============ PATRONES REGEX ============
-# %%% para justificaciones - captura TODO después de %%%
+# %%% para justificaciones
 JUSTIFICATION_PATTERN = re.compile(r'%%%\s*(https?://t\.me/[^\s]+)', re.IGNORECASE)
 
 # @@@ REQUIERE separador | obligatorio
@@ -42,26 +42,28 @@ def extract_telegram_deep_link(link_text: str, bot_username: str, include_channe
     Convierte link de Telegram a deep link válido.
     
     Si include_channel=False (%%%):
-        t.me/canal/20 → bot?start=20 (usa JUSTIFICATIONS_CHAT_ID)
+        t.me/canal/20 → bot?start=j_20 (j_ = justification, usa JUSTIFICATIONS_CHAT_ID)
     
     Si include_channel=True (@@@):
-        t.me/canal/20 → bot?start=d_p_canal-20 (incluye info del canal, sin chiste)
-        t.me/c/123456/20 → bot?start=d_c_123456-20 (canal privado, sin chiste)
+        t.me/canal/20 → bot?start=d_p_canal-20 (d_ = delivery sin chiste)
+        t.me/c/123456/20 → bot?start=d_c_123456-20 (canal privado)
     """
     match = TELEGRAM_LINK_PATTERN.search(link_text)
     if not match:
         # Si es solo número
         if link_text.strip().isdigit():
-            return f"https://t.me/{bot_username}?start={link_text.strip()}"
+            if include_channel:
+                return None  # No podemos crear deep link sin info del canal
+            return f"https://t.me/{bot_username}?start=j_{link_text.strip()}"
         return None
     
     private_id = match.group(1)      # Para t.me/c/XXXX/YY
     public_username = match.group(2)  # Para t.me/username/YY
     message_id = match.group(3)
     
-    # %%% → Solo message_id (usa JUSTIFICATIONS_CHAT_ID por defecto)
+    # %%% → Prefijo j_ + message_id (usa JUSTIFICATIONS_CHAT_ID)
     if not include_channel:
-        return f"https://t.me/{bot_username}?start={message_id}"
+        return f"https://t.me/{bot_username}?start=j_{message_id}"
     
     # @@@ → Incluir info del canal (prefijo d_ = delivery sin chiste)
     if private_id:
@@ -111,12 +113,10 @@ def is_button_only_message(text: str) -> bool:
     if not text:
         return False
     
-    # Quitar todas las sintaxis especiales
     clean = JUSTIFICATION_PATTERN.sub('', text)
     clean = BUTTON_PATTERN.sub('', clean)
     clean = clean.strip()
     
-    # Si queda vacío y tenía sintaxis, es solo botón
     return len(clean) == 0 and has_special_syntax(text)
 
 
@@ -131,7 +131,7 @@ async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboar
     """Construye lista de botones desde el texto"""
     buttons = []
     
-    # %%% Justificaciones → DEEP LINK al bot (con chiste médico)
+    # %%% Justificaciones → DEEP LINK con prefijo j_
     for match in JUSTIFICATION_PATTERN.finditer(text):
         link_text = match.group(1).strip()
         deep_link = extract_telegram_deep_link(link_text, bot_username, include_channel=False)
@@ -157,7 +157,7 @@ async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboar
             deep_link = extract_telegram_deep_link(url_raw, bot_username, include_channel=True)
             if deep_link:
                 buttons.append([InlineKeyboardButton(label, url=deep_link)])
-                logger.info(f"✅ @@@ Deep link (sin chiste): {label} → {deep_link}")
+                logger.info(f"✅ @@@ Deep link: {label} → {deep_link}")
         else:
             # Cualquier otra cosa → Link DIRECTO
             processed_url = process_button_url(url_raw)
@@ -171,16 +171,13 @@ async def build_buttons(text: str, bot_username: str) -> List[List[InlineKeyboar
 # ============ COMANDOS ============
 
 async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa modo lote - CANCELA cualquier otro proceso activo"""
+    """Activa modo lote"""
     if not is_admin(update.effective_user.id):
         return
     
     user_id = update.effective_user.id
     
-    # CANCELAR cualquier proceso previo (ads, etc)
     context.user_data.clear()
-    
-    # Inicializar lote LIMPIO
     active_batches[user_id] = []
     batch_mode[user_id] = True
     
@@ -199,13 +196,12 @@ async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancela TODO - lote y cualquier otro proceso"""
+    """Cancela TODO"""
     if not is_admin(update.effective_user.id):
         return
     
     user_id = update.effective_user.id
     
-    # Limpiar TODO
     active_batches.pop(user_id, None)
     batch_mode[user_id] = False
     context.user_data.clear()
@@ -220,7 +216,6 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     user_id = update.effective_user.id
     
-    # Verificar modo lote activo
     if not batch_mode.get(user_id, False):
         await update.message.reply_text("⚠️ Primero usa /lote")
         return
@@ -235,17 +230,14 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         count = 0
         last_sent_message = None
-        pending_buttons = []  # Acumular botones para el mensaje anterior
+        pending_buttons = []
         
         for i, item in enumerate(items):
             item_type = item.get('type', '')
             
-            # Si es botón para mensaje anterior
             if item_type == 'button_for_previous':
-                # Siempre acumular los botones
                 pending_buttons.extend(item.get('buttons_list', []))
                 
-                # Si no hay mensaje anterior, crear placeholder
                 if not last_sent_message:
                     sent = await context.bot.send_message(
                         chat_id=PUBLIC_CHANNEL_ID,
@@ -255,7 +247,6 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     count += 1
                 continue
             
-            # Antes de enviar el siguiente mensaje, aplicar botones pendientes
             if pending_buttons and last_sent_message:
                 try:
                     await context.bot.edit_message_reply_markup(
@@ -263,12 +254,11 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         message_id=last_sent_message.message_id,
                         reply_markup=InlineKeyboardMarkup(pending_buttons)
                     )
-                    logger.info(f"✅ {len(pending_buttons)} botones asociados a msg {last_sent_message.message_id}")
+                    logger.info(f"✅ {len(pending_buttons)} botones asociados")
                 except Exception as e:
                     logger.error(f"Error asociando botones: {e}")
                 pending_buttons = []
             
-            # Enviar el item
             sent = await send_item_to_channel(context, item)
             if sent:
                 last_sent_message = sent
@@ -276,7 +266,6 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await asyncio.sleep(1.5)
         
-        # Aplicar botones pendientes al último mensaje
         if pending_buttons and last_sent_message:
             try:
                 await context.bot.edit_message_reply_markup(
@@ -284,7 +273,6 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     message_id=last_sent_message.message_id,
                     reply_markup=InlineKeyboardMarkup(pending_buttons)
                 )
-                logger.info(f"✅ Botones finales asociados")
             except Exception as e:
                 logger.error(f"Error asociando botones finales: {e}")
         
@@ -295,7 +283,6 @@ async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status.edit_text(f"❌ Error: {e}")
     
     finally:
-        # Limpiar
         active_batches[user_id] = []
         batch_mode[user_id] = False
 
@@ -304,18 +291,15 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
     """Procesa mensaje en modo lote"""
     user_id = update.effective_user.id
     
-    # Verificar modo lote activo
     if not batch_mode.get(user_id, False):
         return False
     
     msg = update.message
     raw_text = msg.text or msg.caption or ""
     
-    # Obtener username del bot
     bot_info = await context.bot.get_me()
     bot_username = bot_info.username
     
-    # Preparar item base
     item = {
         'chat_id': msg.chat_id,
         'msg_id': msg.message_id,
@@ -380,7 +364,6 @@ async def handle_batch_message(update: Update, context: ContextTypes.DEFAULT_TYP
         item['type'] = 'forward'
         await msg.reply_text("✅ Mensaje capturado")
     
-    # Guardar en lote
     if user_id not in active_batches:
         active_batches[user_id] = []
     active_batches[user_id].append(item)
@@ -393,7 +376,6 @@ async def send_item_to_channel(context: ContextTypes.DEFAULT_TYPE, item: dict) -
     target = PUBLIC_CHANNEL_ID
     item_type = item.get('type', '')
     
-    # Encuesta
     if item_type == 'poll':
         return await context.bot.send_poll(
             chat_id=target,
@@ -407,7 +389,6 @@ async def send_item_to_channel(context: ContextTypes.DEFAULT_TYPE, item: dict) -
             explanation_entities=item.get('explanation_entities')
         )
     
-    # Forward simple
     if item_type == 'forward':
         return await context.bot.copy_message(
             chat_id=target,
@@ -415,7 +396,6 @@ async def send_item_to_channel(context: ContextTypes.DEFAULT_TYPE, item: dict) -
             message_id=item['msg_id']
         )
     
-    # Media con botones
     if item_type == 'media':
         buttons = item.get('buttons_list', [])
         reply_markup = InlineKeyboardMarkup(buttons) if buttons else None
@@ -428,7 +408,6 @@ async def send_item_to_channel(context: ContextTypes.DEFAULT_TYPE, item: dict) -
             reply_markup=reply_markup
         )
     
-    # Texto con botones
     if item_type == 'text':
         text = item.get('clean_text', '')
         buttons = item.get('buttons_list', [])
