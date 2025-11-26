@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 JUSTIFICATIONS HANDLER - Sistema de entregas protegidas
-CORREGIDO: Resuelve usernames con get_chat(), mensajes separados %%% vs @@@
+MEJORADO: Mensaje cargando, elimina /start, mejor UX
 """
 import logging
 import asyncio
@@ -43,6 +43,7 @@ async def handle_justification_start(update: Update, context: ContextTypes.DEFAU
     
     param = parts[1].strip()
     user_id = update.effective_user.id
+    user_msg_id = update.message.message_id  # ID del mensaje /start del usuario
     
     logger.info(f"🔍 Procesando: param='{param}'")
     
@@ -94,12 +95,21 @@ async def handle_justification_start(update: Update, context: ContextTypes.DEFAU
     
     # ========== %%% JUSTIFICACIONES ==========
     
-    # Solo número → usa JUSTIFICATIONS_CHAT_ID
+    # Prefijo j_ → justificación con chiste (usa JUSTIFICATIONS_CHAT_ID)
+    elif param.startswith('j_'):
+        is_justification = True
+        msg_part = param[2:]  # Quitar 'j_'
+        if msg_part.isdigit():
+            chat_id = JUSTIFICATIONS_CHAT_ID
+            message_id = int(msg_part)
+            logger.info(f"📍 %%% Justificación (j_): msg {message_id}")
+    
+    # Solo número (legacy) → también justificación
     elif param.isdigit():
         is_justification = True
         chat_id = JUSTIFICATIONS_CHAT_ID
         message_id = int(param)
-        logger.info(f"📍 %%% Justificación: msg {message_id}")
+        logger.info(f"📍 %%% Justificación (legacy): msg {message_id}")
     
     # No reconocido
     if chat_id is None or message_id is None:
@@ -107,8 +117,8 @@ async def handle_justification_start(update: Update, context: ContextTypes.DEFAU
         await update.message.reply_text("❌ Enlace inválido.")
         return True
     
-    # Enviar contenido
-    await send_content(context, user_id, chat_id, message_id, is_justification)
+    # Enviar contenido (pasamos el ID del mensaje /start para eliminarlo)
+    await send_content(context, user_id, chat_id, message_id, is_justification, user_msg_id)
     return True
 
 
@@ -117,12 +127,21 @@ async def send_content(
     user_id: int,
     source_chat_id: int,
     message_id: int,
-    is_justification: bool = True
+    is_justification: bool = True,
+    user_command_msg_id: int = None
 ):
     """Envía contenido al usuario"""
+    loading_msg = None
     try:
-        # Limpiar entregas previas
+        # Limpiar entregas previas (incluye /start anteriores)
         await clean_previous(context, user_id)
+        
+        # MENSAJE DE CARGANDO
+        loading_msg = await context.bot.send_message(
+            chat_id=user_id,
+            text="⏳ Obteniendo contenido...",
+            disable_notification=True
+        )
         
         # Copiar mensaje
         sent = await context.bot.copy_message(
@@ -131,6 +150,12 @@ async def send_content(
             message_id=message_id,
             protect_content=True
         )
+        
+        # Eliminar mensaje de cargando
+        try:
+            await context.bot.delete_message(chat_id=user_id, message_id=loading_msg.message_id)
+        except:
+            pass
         
         logger.info(f"✅ Enviado: user={user_id}, chat={source_chat_id}, msg={message_id}, tipo={'%%%' if is_justification else '@@@'}")
         
@@ -153,6 +178,10 @@ async def send_content(
         )
         message_ids.append(msg.message_id)
         
+        # TAMBIÉN guardar el ID del comando /start para eliminarlo después
+        if user_command_msg_id:
+            message_ids.append(user_command_msg_id)
+        
         # Guardar para auto-eliminación
         sent_justifications[user_id] = {
             'message_ids': message_ids,
@@ -165,6 +194,12 @@ async def send_content(
     
     except TelegramError as e:
         logger.error(f"❌ Error: {e}")
+        # Intentar eliminar loading si existe
+        if loading_msg:
+            try:
+                await context.bot.delete_message(chat_id=user_id, message_id=loading_msg.message_id)
+            except:
+                pass
         await context.bot.send_message(
             chat_id=user_id,
             text="❌ No se pudo obtener el contenido."
@@ -172,7 +207,7 @@ async def send_content(
 
 
 async def clean_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Limpia entregas previas"""
+    """Limpia entregas previas (contenido + mensajes + /start)"""
     if user_id not in sent_justifications:
         return
     
