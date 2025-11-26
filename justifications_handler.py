@@ -356,6 +356,19 @@ async def handle_justification_request(update: Update, context: ContextTypes.DEF
         await update.message.reply_text("❌ Link de justificación inválido")
 
 
+# ============ FUNCIÓN QUE MAIN.PY NECESITA ============
+
+async def handle_justification_start(update: Update, context: ContextTypes.DEFAULT_TYPE, param: str = None) -> bool:
+    """
+    Función que main.py llama cuando hay deep link.
+    Esta es la función que faltaba y causaba el error de import.
+    """
+    if not param:
+        return False
+    
+    return await process_start_param(update, context, param)
+
+
 # ============ REGISTRAR HANDLERS ============
 
 def add_justification_handlers(application):
