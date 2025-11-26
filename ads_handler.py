@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 ADS HANDLER - Sistema de publicidad programada
-CORREGIDO: Cancelación cruzada con /lote
+MEJORADO: Sistema inteligente - máximo 1 ad visible en el canal
 """
 import logging
 import asyncio
@@ -19,6 +19,10 @@ logger = logging.getLogger(__name__)
 # Estado de ads activos
 active_ads: Dict[int, Dict] = {}
 ads_tasks: Dict[int, asyncio.Task] = {}
+
+# GLOBAL: ID del último mensaje de publicidad en el canal (compartido entre todas las ads)
+LAST_AD_MESSAGE_ID: Optional[int] = None
+AD_LOCK = asyncio.Lock()
 
 # Estados de configuración
 ADS_STATE_WAITING_CONTENT = 'waiting_content'
@@ -57,6 +61,33 @@ def parse_interval(text: str) -> Optional[int]:
     return None
 
 
+async def delete_last_ad(bot) -> bool:
+    """Elimina el último ad del canal (global, compartido entre todas las ads)"""
+    global LAST_AD_MESSAGE_ID
+    
+    async with AD_LOCK:
+        if LAST_AD_MESSAGE_ID:
+            try:
+                await bot.delete_message(
+                    chat_id=PUBLIC_CHANNEL_ID,
+                    message_id=LAST_AD_MESSAGE_ID
+                )
+                logger.info(f"🗑️ Ad anterior eliminado: {LAST_AD_MESSAGE_ID}")
+                LAST_AD_MESSAGE_ID = None
+                return True
+            except Exception as e:
+                logger.warning(f"No se pudo eliminar ad anterior: {e}")
+                LAST_AD_MESSAGE_ID = None
+    return False
+
+
+async def set_last_ad(message_id: int):
+    """Registra el nuevo ad como el último"""
+    global LAST_AD_MESSAGE_ID
+    async with AD_LOCK:
+        LAST_AD_MESSAGE_ID = message_id
+
+
 async def cmd_set_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Inicia configuración de publicidad"""
     if not is_admin(update.effective_user.id):
@@ -87,23 +118,49 @@ async def cmd_set_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def cmd_stop_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Detiene publicidad activa"""
+    """Detiene TODA la publicidad activa"""
     if not is_admin(update.effective_user.id):
         return
     
     user_id = update.effective_user.id
+    count = 0
     
-    # Cancelar tarea si existe
-    if user_id in ads_tasks:
-        ads_tasks[user_id].cancel()
-        del ads_tasks[user_id]
+    # Cancelar TODAS las tareas de ads
+    for uid in list(ads_tasks.keys()):
+        if uid in ads_tasks:
+            ads_tasks[uid].cancel()
+            del ads_tasks[uid]
+            count += 1
     
-    if user_id in active_ads:
-        del active_ads[user_id]
-    
+    # Limpiar configuraciones
+    active_ads.clear()
     context.user_data.clear()
     
-    await update.message.reply_text("🛑 Publicidad detenida.")
+    # Eliminar último ad del canal
+    await delete_last_ad(context.bot)
+    
+    await update.message.reply_text(f"🛑 Publicidad detenida. ({count} ads cancelados)")
+
+
+async def cmd_list_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Lista las ads activas"""
+    if not is_admin(update.effective_user.id):
+        return
+    
+    if not active_ads:
+        await update.message.reply_text("📭 No hay publicidad activa.")
+        return
+    
+    lines = ["📢 **ADS ACTIVAS:**\n"]
+    for uid, data in active_ads.items():
+        minutes = data.get('interval_minutes', 0)
+        if minutes >= 60:
+            time_str = f"{minutes // 60}h"
+        else:
+            time_str = f"{minutes}m"
+        lines.append(f"• Cada {time_str}")
+    
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 async def handle_ads_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -175,7 +232,9 @@ async def handle_ads_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"✅ **PUBLICIDAD ACTIVADA**\n\n"
             f"⏰ Intervalo: cada **{time_str}**\n"
             f"🔄 Primer envío: ahora\n\n"
-            f"Usa **/stop_ads** para detener",
+            f"💡 Si activas otra ad, ambas se turnarán\n"
+            f"🔁 Máximo 1 ad visible (se reemplazan)\n\n"
+            f"Usa **/stop_ads** para detener todas",
             parse_mode="Markdown"
         )
         return True
@@ -184,20 +243,14 @@ async def handle_ads_message(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 
 async def ads_loop(context: ContextTypes.DEFAULT_TYPE, user_id: int, content: dict, interval_minutes: int):
-    """Loop de publicidad"""
+    """Loop de publicidad - INTELIGENTE: borra ad anterior antes de enviar"""
     try:
-        last_ad_message_id = None
-        
         while True:
-            # Eliminar anuncio anterior si existe
-            if last_ad_message_id:
-                try:
-                    await context.bot.delete_message(
-                        chat_id=PUBLIC_CHANNEL_ID,
-                        message_id=last_ad_message_id
-                    )
-                except:
-                    pass
+            # SIEMPRE borrar el ad anterior (de CUALQUIER ads) antes de enviar
+            await delete_last_ad(context.bot)
+            
+            # Pequeña pausa para evitar rate limits
+            await asyncio.sleep(0.5)
             
             # Enviar nuevo anuncio
             try:
@@ -206,8 +259,9 @@ async def ads_loop(context: ContextTypes.DEFAULT_TYPE, user_id: int, content: di
                     from_chat_id=content['chat_id'],
                     message_id=content['msg_id']
                 )
-                last_ad_message_id = sent.message_id
-                logger.info(f"📢 Anuncio enviado: {sent.message_id}")
+                # Registrar como último ad global
+                await set_last_ad(sent.message_id)
+                logger.info(f"📢 Ad enviado: {sent.message_id} (cada {interval_minutes}m)")
             except Exception as e:
                 logger.error(f"Error enviando anuncio: {e}")
             
@@ -215,13 +269,5 @@ async def ads_loop(context: ContextTypes.DEFAULT_TYPE, user_id: int, content: di
             await asyncio.sleep(interval_minutes * 60)
     
     except asyncio.CancelledError:
-        # Eliminar último anuncio al cancelar
-        if last_ad_message_id:
-            try:
-                await context.bot.delete_message(
-                    chat_id=PUBLIC_CHANNEL_ID,
-                    message_id=last_ad_message_id
-                )
-            except:
-                pass
         logger.info(f"🛑 Loop de ads cancelado para user {user_id}")
+        # NO borrar el ad aquí - se borra en cmd_stop_ads si el usuario quiere
