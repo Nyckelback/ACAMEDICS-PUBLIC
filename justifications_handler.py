@@ -118,8 +118,17 @@ async def resolve_channel(bot, identifier: str) -> Optional[int]:
 
 # ============ BORRAR MENSAJES ANTERIORES ============
 
+async def _delete_msgs_background(bot, user_id: int, msg_ids: List[int]):
+    """Función auxiliar para borrar en background."""
+    for mid in msg_ids:
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=mid)
+        except:
+            pass
+
+
 async def delete_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
-    """Borra los mensajes anteriores del usuario (en paralelo)."""
+    """Borra los mensajes anteriores del usuario."""
     if user_id not in last_sent:
         return
     
@@ -127,16 +136,8 @@ async def delete_previous(context: ContextTypes.DEFAULT_TYPE, user_id: int):
     if not msg_ids:
         return
     
-    async def delete_msg(mid):
-        try:
-            await context.bot.delete_message(chat_id=user_id, message_id=mid)
-        except:
-            pass
-    
-    # Borrar en paralelo sin esperar
-    asyncio.create_task(
-        asyncio.gather(*[delete_msg(mid) for mid in msg_ids], return_exceptions=True)
-    )
+    # Ejecutar en background sin esperar
+    asyncio.create_task(_delete_msgs_background(context.bot, user_id, msg_ids))
 
 
 # ============ HANDLER PRINCIPAL ============
