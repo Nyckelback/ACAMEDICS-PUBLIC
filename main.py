@@ -31,33 +31,42 @@ def is_admin(user_id: int) -> bool:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /start - maneja justificaciones o bienvenida"""
-    
-    # MÉTODO ROBUSTO: Verificar context.args (más confiable que parsear texto)
-    if context.args and len(context.args) > 0:
-        # Hay parámetro de deep link
-        param = context.args[0]
+    try:
         user_id = update.effective_user.id
-        logger.info(f"🔗 Deep link recibido: user={user_id}, param={param}")
+        logger.info(f"📥 /start recibido de user_id={user_id}, args={context.args}")
         
-        # SI ES ADMIN: Limpiar estados para evitar conflictos
-        if is_admin(user_id):
-            context.user_data.clear()  # Limpiar estado de ads
-            from batch_handler import batch_mode, active_batches
-            batch_mode[user_id] = False  # Desactivar modo lote
-            active_batches.pop(user_id, None)
-            logger.info(f"🧹 Admin {user_id}: estados limpiados para deep link")
+        # MÉTODO ROBUSTO: Verificar context.args (más confiable que parsear texto)
+        if context.args and len(context.args) > 0:
+            # Hay parámetro de deep link
+            param = context.args[0]
+            logger.info(f"🔗 Deep link: user={user_id}, param={param}, is_admin={is_admin(user_id)}")
+            
+            # SI ES ADMIN: Limpiar estados para evitar conflictos
+            if is_admin(user_id):
+                context.user_data.clear()  # Limpiar estado de ads
+                from batch_handler import batch_mode, active_batches
+                batch_mode[user_id] = False  # Desactivar modo lote
+                active_batches.pop(user_id, None)
+                logger.info(f"🧹 Admin {user_id}: estados limpiados para deep link")
+            
+            from justifications_handler import handle_justification_start
+            handled = await handle_justification_start(update, context, param=param)
+            if handled:
+                return
         
-        from justifications_handler import handle_justification_start
-        handled = await handle_justification_start(update, context, param=param)
-        if handled:
-            return
-    
-    # Bienvenida normal (sin parámetros)
-    await update.message.reply_text(
-        "👋 ¡Bienvenido!\n\n"
-        "Este bot envía casos clínicos educativos.\n"
-        "Suscríbete al canal para recibir contenido."
-    )
+        # Bienvenida normal (sin parámetros)
+        logger.info(f"👋 Enviando bienvenida a user_id={user_id}")
+        await update.message.reply_text(
+            "👋 ¡Bienvenido!\n\n"
+            "Este bot envía casos clínicos educativos.\n"
+            "Suscríbete al canal para recibir contenido."
+        )
+    except Exception as e:
+        logger.exception(f"❌ Error en cmd_start: {e}")
+        try:
+            await update.message.reply_text(f"❌ Error: {e}")
+        except:
+            pass
 
 
 async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -167,6 +176,20 @@ async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra tu ID y si eres admin - SIEMPRE responde"""
+    user_id = update.effective_user.id
+    is_adm = is_admin(user_id)
+    
+    await update.message.reply_text(
+        f"🆔 **Tu información:**\n\n"
+        f"• User ID: `{user_id}`\n"
+        f"• Es admin: {'✅ SÍ' if is_adm else '❌ NO'}\n"
+        f"• Admins configurados: `{ADMIN_USER_IDS}`",
+        parse_mode="Markdown"
+    )
+
+
 # ============ ROUTER DE MENSAJES ============
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -212,6 +235,7 @@ def main():
     
     # Comandos
     app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("myid", cmd_myid))  # Debug - siempre responde
     app.add_handler(CommandHandler("lote", cmd_lote))
     app.add_handler(CommandHandler("enviar", cmd_enviar))
     app.add_handler(CommandHandler("cancelar", cmd_cancelar))
@@ -228,7 +252,11 @@ def main():
     ))
     
     logger.info("🚀 Bot iniciado!")
-    app.run_polling(drop_pending_updates=True)
+    logger.info("⚠️ IMPORTANTE: Asegúrate de que NO hay otra instancia del bot corriendo")
+    logger.info("   (Si tienes otra corriendo local o en otro servidor, compiten por updates)")
+    
+    # SIN drop_pending_updates para no perder ningún /start
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
