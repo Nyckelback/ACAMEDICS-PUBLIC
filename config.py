@@ -12,7 +12,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 # Canal público donde se publican los casos
 PUBLIC_CHANNEL_ID = int(os.environ.get("PUBLIC_CHANNEL_ID", "-1002679848195"))
 
-# Canal de justificaciones (por defecto)
+# Canal de justificaciones (solo para compatibilidad con links viejos)
 JUSTIFICATIONS_CHAT_ID = int(os.environ.get("JUSTIFICATIONS_CHAT_ID", "-1003058530208"))
 
 # ============ ADMINS ============
