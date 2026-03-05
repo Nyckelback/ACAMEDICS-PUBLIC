@@ -78,6 +78,12 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await _handle_new_format_deeplink(update, context, deep_link)
         return
 
+    # MINI APP FORMAT: raw UUID (from t.me/bot/appname?startapp=UUID)
+    # UUIDs are 36 chars with format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+    if len(deep_link) == 36 and deep_link.count("-") == 4:
+        await _handle_new_format_deeplink(update, context, f"case_{deep_link}")
+        return
+
     # OLD FORMATS: backward compatibility
     await _handle_old_format_deeplink(update, context, deep_link)
 
@@ -392,20 +398,7 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         # Prepare explanation (first 200 chars)
         explanation = pending_case["justification"][:200]
 
-        # Send poll to channel
-        poll_msg = await context.bot.send_poll(
-            chat_id=Config.PUBLIC_CHANNEL_ID,
-            question=poll_question,
-            options=option_texts,
-            type="quiz",
-            correct_option_id=correct_index,
-            explanation=explanation,
-            is_anonymous=True,
-        )
-
-        logger.info(f"Poll published for case {case_uuid}: {poll_msg.message_id}")
-
-        # Send second message with Mini App button (opens directly in channel)
+        # Prepare Mini App button (attached directly to the poll)
         miniapp_short_name = Config.MINIAPP_SHORT_NAME
         keyboard = InlineKeyboardMarkup(
             [
@@ -418,13 +411,19 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             ]
         )
 
-        button_msg = await context.bot.send_message(
+        # Send poll to channel WITH the button attached
+        poll_msg = await context.bot.send_poll(
             chat_id=Config.PUBLIC_CHANNEL_ID,
-            text=f"📚 Caso #{case_number}",
+            question=poll_question,
+            options=option_texts,
+            type="quiz",
+            correct_option_id=correct_index,
+            explanation=explanation,
+            is_anonymous=True,
             reply_markup=keyboard,
         )
 
-        logger.info(f"Justification button sent: {button_msg.message_id}")
+        logger.info(f"Poll published for case {case_uuid}: {poll_msg.message_id}")
 
         # Update case with message IDs
         supabase.update_case(
@@ -574,7 +573,8 @@ def main() -> None:
             asyncio.set_event_loop(asyncio.new_event_loop())
 
         # Start the bot (blocking call)
-        app.run_polling()
+        # drop_pending_updates=True prevents processing old queued updates on restart
+        app.run_polling(drop_pending_updates=True)
 
     except Exception as e:
         logger.error(f"Fatal error: {e}")
