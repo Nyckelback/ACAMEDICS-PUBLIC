@@ -310,13 +310,16 @@ async def caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     context.user_data["published"] = False
 
     await update.message.reply_text(
-        "📝 Envía el caso clínico completo (viñeta + opciones + CORRECTA + justificación + tip + bibliografía)"
+        "📝 Envía el caso clínico completo (viñeta + opciones + CORRECTA + justificación + tip + bibliografía)",
+        reply_markup=_admin_keyboard(),
     )
     return STATE_CASE_MODE
 
 
 async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle text input in case mode."""
+    if not update.message:
+        return STATE_CASE_MODE
     try:
         # Parse the case
         parsed = parse_case(update.message.text)
@@ -337,8 +340,11 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             await update.message.reply_text(error_text)
             return STATE_CASE_MODE
 
-        # Store parsed case in context
-        context.user_data["pending_case"] = parsed.to_dict()
+        # Store parsed case in context (strip parser-only fields that aren't DB columns)
+        case_dict = parsed.to_dict()
+        for key in ("errors", "parsed_ok", "raw_text"):
+            case_dict.pop(key, None)
+        context.user_data["pending_case"] = case_dict
         context.user_data["pending_case"]["images"] = []
 
         # Show preview with visual score
@@ -424,6 +430,8 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
 async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle photo uploads in waiting_images state."""
+    if not update.message:
+        return STATE_WAITING_IMAGES
     try:
         if not update.message.photo:
             return STATE_WAITING_IMAGES
@@ -462,6 +470,8 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Warn admin when they send a document instead of a photo."""
+    if not update.message:
+        return STATE_WAITING_IMAGES
     await update.message.reply_text(
         "⚠️ Enviaste un archivo/documento. Para agregar imágenes, envíalas como FOTO (no como archivo).\n"
         "Envía fotos o /publicar para continuar."
@@ -471,6 +481,8 @@ async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT
 
 async def waiting_images_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle unexpected text in WAITING_IMAGES state."""
+    if not update.message:
+        return STATE_WAITING_IMAGES
     await update.message.reply_text(
         "⚠️ Ya hay un caso cargado. Opciones:\n\n"
         "📸 Envía fotos para agregar imágenes\n"
@@ -515,6 +527,8 @@ async def editar_tip_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def edit_tip_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive new tip text."""
+    if not update.message:
+        return STATE_EDIT_TIP
     context.user_data["pending_case"]["tip"] = update.message.text.strip()
     await update.message.reply_text(
         "✅ Tip actualizado.\n\n"
@@ -539,6 +553,8 @@ async def editar_just_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def edit_just_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive new justification text."""
+    if not update.message:
+        return STATE_EDIT_JUSTIFICATION
     context.user_data["pending_case"]["justification"] = update.message.text.strip()
     await update.message.reply_text(
         "✅ Justificación actualizada.\n\n"
@@ -564,6 +580,8 @@ async def editar_bib_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def edit_bib_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Receive new bibliography text."""
+    if not update.message:
+        return STATE_EDIT_BIB
     lines = [l.strip() for l in update.message.text.strip().split("\n") if l.strip()]
     # Clean prefixes like "- ", "* ", "1. " etc.
     import re as _re
@@ -902,6 +920,7 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             f"✅ Caso #{case_number} publicado en el canal.\n"
             f"UUID: `{case_uuid}`",
             parse_mode="Markdown",
+            reply_markup=_admin_keyboard(),
         )
 
         # Clear user data
@@ -931,7 +950,10 @@ async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         except Exception as e:
             logger.warning(f"Could not delete preview {preview_uuid}: {e}")
     context.user_data.clear()
-    await update.message.reply_text("🗑️ Caso cancelado y eliminado.")
+    await update.message.reply_text(
+        "🗑️ Caso cancelado y eliminado.",
+        reply_markup=_admin_keyboard(),
+    )
     return ConversationHandler.END
 
 
@@ -982,6 +1004,12 @@ def _is_admin(user_id: int) -> bool:
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle errors in the bot."""
+    # Ignore Conflict errors (happen during deploys when two instances overlap)
+    from telegram.error import Conflict
+    if isinstance(context.error, Conflict):
+        logger.warning(f"Conflict error (normal during deploy): {context.error}")
+        return
+
     logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
     # Try to send error message to admin
@@ -1033,12 +1061,12 @@ def main() -> None:
             entry_points=[CommandHandler("caso", caso_command)],
             states={
                 STATE_CASE_MODE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, case_text_handler),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, case_text_handler),
                 ],
                 STATE_WAITING_IMAGES: [
                     CallbackQueryHandler(action_button_callback, pattern="^action_"),
-                    MessageHandler(filters.PHOTO, image_handler),
-                    MessageHandler(filters.Document.ALL, document_warning_handler),
+                    MessageHandler(filters.PHOTO & ~filters.UpdateType.EDITED_MESSAGE, image_handler),
+                    MessageHandler(filters.Document.ALL & ~filters.UpdateType.EDITED_MESSAGE, document_warning_handler),
                     CommandHandler("caso", caso_command),
                     CommandHandler("publicar", publicar_command),
                     CommandHandler("preview", preview_command),
@@ -1047,18 +1075,18 @@ def main() -> None:
                     CommandHandler("editar_just", editar_just_command),
                     CommandHandler("editar_bib", editar_bib_command),
                     CommandHandler("cancelar", cancelar_command),
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, waiting_images_text_handler),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, waiting_images_text_handler),
                 ],
                 STATE_EDIT_TIP: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, edit_tip_handler),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_tip_handler),
                     CommandHandler("cancelar", cancelar_command),
                 ],
                 STATE_EDIT_JUSTIFICATION: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, edit_just_handler),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_just_handler),
                     CommandHandler("cancelar", cancelar_command),
                 ],
                 STATE_EDIT_BIB: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, edit_bib_handler),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_bib_handler),
                     CommandHandler("cancelar", cancelar_command),
                 ],
             },
@@ -1107,9 +1135,12 @@ def main() -> None:
                     )
                     return
 
-                # Update the pending case with new parsed data
+                # Update the pending case with new parsed data (strip parser-only fields)
                 old_images = context.user_data.get("pending_case", {}).get("images", [])
-                context.user_data["pending_case"] = parsed.to_dict()
+                case_dict = parsed.to_dict()
+                for key in ("errors", "parsed_ok", "raw_text"):
+                    case_dict.pop(key, None)
+                context.user_data["pending_case"] = case_dict
                 context.user_data["pending_case"]["images"] = old_images
 
                 # Update preview in Supabase if exists
@@ -1152,10 +1183,11 @@ def main() -> None:
             except Exception as e:
                 logger.error(f"Error processing edited message: {e}")
 
+        # Group 1 = runs independently of ConversationHandler (group 0)
         app.add_handler(MessageHandler(
             filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND,
             edited_message_handler,
-        ))
+        ), group=1)
 
         # Error handler
         app.add_error_handler(error_handler)
