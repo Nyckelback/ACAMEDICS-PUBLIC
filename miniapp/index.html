@@ -149,8 +149,11 @@
     <div class="bottom-accent"></div>
 
     <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready(); tg.expand(); tg.disableVerticalSwipes();
+        let tg = null;
+        try {
+            tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+            if (tg) { tg.ready(); tg.expand(); if (tg.disableVerticalSwipes) tg.disableVerticalSwipes(); }
+        } catch(e) { console.warn('Telegram WebApp SDK not available'); }
         document.addEventListener('contextmenu', e => e.preventDefault());
         document.addEventListener('selectstart', e => e.preventDefault());
         document.addEventListener('dragstart', e => e.preventDefault());
@@ -179,7 +182,14 @@
 
         async function loadCase() {
             try {
-                const caseId = new URLSearchParams(window.location.search).get('case');
+                // Read case ID from URL param (?case=) or Telegram startapp param
+                let caseId = new URLSearchParams(window.location.search).get('case');
+                if (!caseId && tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+                    caseId = tg.initDataUnsafe.start_param;
+                }
+                if (!caseId && new URLSearchParams(window.location.hash.replace('#','?')).get('tgWebAppStartParam')) {
+                    caseId = new URLSearchParams(window.location.hash.replace('#','?')).get('tgWebAppStartParam');
+                }
                 if (!caseId) { showError('No se especificó caso clínico'); return; }
                 const ak = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1eGV3enplcWdsdWltZm1pZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NjYwMjcsImV4cCI6MjA4ODI0MjAyN30.fDyK2PwJCpCOi8axSNw_hmFRe5tSxyptoErWIpS2JLQ';
                 const base = 'https://xuxewzzeqgluimfmigjs.supabase.co/rest/v1';
