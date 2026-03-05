@@ -6,6 +6,9 @@ Main entry point for the bot using python-telegram-bot v21.6
 import logging
 import asyncio
 import io
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import pytz
@@ -549,6 +552,19 @@ def main() -> None:
 
         logger.info("Bot handlers registered")
         logger.info("Starting bot in polling mode...")
+
+        # Start health check server for Render (needs an open port)
+        port = int(os.environ.get("PORT", 10000))
+        class HealthHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"OK")
+            def log_message(self, format, *args):
+                pass  # Suppress logs
+        server = HTTPServer(("0.0.0.0", port), HealthHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        logger.info(f"Health check server on port {port}")
 
         # Ensure event loop exists (required for Python 3.14+)
         try:
