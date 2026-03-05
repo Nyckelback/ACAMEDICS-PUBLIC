@@ -78,7 +78,7 @@ _JUSTIFICATION_KEYWORDS = (
     r")"
 )
 
-_JUSTIFICATION_PATTERN = r"(?:^|\n)\s*" + _JUSTIFICATION_KEYWORDS + r"\s*[:.]?\s*(?:\n|$)"
+_JUSTIFICATION_PATTERN = r"(?:^|\n)\s*" + _JUSTIFICATION_KEYWORDS + r"\s*[:.;\-]?\s*"
 
 # TIP section header variations
 # Matches: TIP ACAMÉDICO, TIP ACADEMICO, TIP, DATO CLAVE, DATO IMPORTANTE,
@@ -89,23 +89,31 @@ _TIP_KEYWORDS = (
     r"TIP\s+ACAM[EÉ]DICO"
     r"|TIP\s+ACADEMICO"
     r"|TIP\s+CL[IÍ]NICO"
+    r"|TIP\s+M[EÉ]DICO"
     r"|DATO\s+CLAVE"
     r"|DATO\s+IMPORTANTE"
     r"|DATO\s+CL[IÍ]NICO"
+    r"|DATO\s+M[EÉ]DICO"
     r"|PERLA\s+CL[IÍ]NICA"
     r"|PERLA\s+CLINICA"
+    r"|PERLA\s+M[EÉ]DICA"
     r"|NOTA\s+CL[IÍ]NICA"
     r"|NOTA\s+CLINICA"
+    r"|NOTA\s+IMPORTANTE"
     r"|PUNTO\s+CLAVE"
     r"|KEY\s+POINT"
     r"|PEARL"
     r"|CONSEJO"
     r"|RECUERD[AE]"
+    r"|PARA\s+RECORDAR"
+    r"|SABIAS\s+QUE"
+    r"|SAB[IÍ]AS\s+QUE"
+    r"|IMPORTANTE"
     r"|TIP"
     r")"
 )
 
-_TIP_PATTERN = r"(?:^|\n)\s*" + _TIP_KEYWORDS + r"\s*[:.]?\s*(?:\n|$)"
+_TIP_PATTERN = r"(?:^|\n)\s*" + _TIP_KEYWORDS + r"\s*[:.;\-]?\s*"
 
 # BIBLIOGRAPHY section header variations
 # Matches: BIBLIOGRAFÍA, BIBLIOGRAFIA, REFERENCIAS BIBLIOGRÁFICAS, REFERENCIAS,
@@ -129,7 +137,7 @@ _BIB_KEYWORDS = (
     r")"
 )
 
-_BIB_PATTERN = r"(?:^|\n)\s*" + _BIB_KEYWORDS + r"\s*[:.]?\s*(?:\n|$)"
+_BIB_PATTERN = r"(?:^|\n)\s*" + _BIB_KEYWORDS + r"\s*[:.;\-]?\s*"
 
 # OPTIONS - detect option lines (A. or A) format)
 _OPTION_START = r"^[A-F][.)]\s+"
@@ -190,9 +198,20 @@ def _fix_telegram_emojis(text: str) -> str:
             fixed.append(line)
     result = "\n".join(fixed)
 
-    # Pass 2: fix inline emojis (inside justification, tip, etc.)
-    for emoji, replacement in emoji_to_inline.items():
-        result = result.replace(emoji, replacement)
+    # Pass 2: fix inline emojis ONLY in non-option lines
+    # This prevents "A) text with 😎" from becoming "A) text with B)"
+    # which would be split into a false option by _split_inline_options
+    new_lines = []
+    for line in result.split("\n"):
+        stripped = line.strip()
+        # Skip lines that ARE option lines (start with A) B) etc.)
+        if re.match(r'^[A-F][.)]\s', stripped):
+            new_lines.append(line)
+        else:
+            for emoji, replacement in emoji_to_inline.items():
+                line = line.replace(emoji, replacement)
+            new_lines.append(line)
+    result = "\n".join(new_lines)
 
     return result
 
@@ -206,33 +225,47 @@ def _split_inline_options(text: str) -> str:
     B. Option two
     C. Option three"
 
-    This handles cases where the user pastes all options in one paragraph.
-    Only splits when 2+ options are found on the same line.
+    IMPORTANT: Only splits BEFORE the CORRECTA/answer section.
+    This prevents "(opción C) es el tratamiento..." in justification
+    from being split into a false option line.
     """
     import re as _re
     # Pattern: letter followed by . or ) and space, at word boundary
     option_pat = _re.compile(r'(?<!\w)([A-F][.)]\s)')
 
+    # Find where the answer/correcta section starts - don't split after that
+    answer_markers = _re.compile(
+        r'^(?:CORRECTA|RESPUESTA\s+CORRECTA|RPTA|OPCI[OÓ]N\s+CORRECTA|ANSWER)',
+        _re.IGNORECASE | _re.MULTILINE
+    )
+    answer_match = answer_markers.search(text)
+    split_boundary = answer_match.start() if answer_match else len(text)
+
     new_lines = []
+    current_pos = 0
     for line in text.split("\n"):
-        matches = list(option_pat.finditer(line))
-        if len(matches) >= 2:
-            # Multiple options on one line - split them
-            parts = []
-            for idx, m in enumerate(matches):
-                start = m.start()
-                end = matches[idx + 1].start() if idx + 1 < len(matches) else len(line)
-                part = line[start:end].strip()
-                if part:
-                    parts.append(part)
-            # If first option doesn't start at position 0, keep the prefix as vignette
-            if matches[0].start() > 0:
-                prefix = line[:matches[0].start()].strip()
-                if prefix:
-                    new_lines.append(prefix)
-            new_lines.extend(parts)
+        line_end = current_pos + len(line)
+        # Only split lines that are BEFORE the answer section
+        if current_pos < split_boundary:
+            matches = list(option_pat.finditer(line))
+            if len(matches) >= 2:
+                parts = []
+                for idx, m in enumerate(matches):
+                    start = m.start()
+                    end = matches[idx + 1].start() if idx + 1 < len(matches) else len(line)
+                    part = line[start:end].strip()
+                    if part:
+                        parts.append(part)
+                if matches[0].start() > 0:
+                    prefix = line[:matches[0].start()].strip()
+                    if prefix:
+                        new_lines.append(prefix)
+                new_lines.extend(parts)
+            else:
+                new_lines.append(line)
         else:
             new_lines.append(line)
+        current_pos = line_end + 1  # +1 for the \n
     return "\n".join(new_lines)
 
 
@@ -314,7 +347,7 @@ def parse_case(text: str) -> ParsedCase:
         justification = text[just_start:just_end].strip()
         # If justification starts with a justification header keyword, strip it
         justification = re.sub(
-            r"^" + _JUSTIFICATION_KEYWORDS + r"\s*[:.]?\s*\n?",
+            r"^" + _JUSTIFICATION_KEYWORDS + r"\s*[:.;\-]?\s*\n?",
             "", justification, flags=re.IGNORECASE
         ).strip()
 
@@ -329,7 +362,7 @@ def parse_case(text: str) -> ParsedCase:
         tip = text[tip_header_end:tip_end].strip()
         # Remove header if it leaked through
         tip = re.sub(
-            r"^" + _TIP_KEYWORDS + r"\s*[:.]?\s*\n?",
+            r"^" + _TIP_KEYWORDS + r"\s*[:.;\-]?\s*\n?",
             "", tip, flags=re.IGNORECASE
         ).strip()
     elif tip_start_idx >= 0:
@@ -338,7 +371,7 @@ def parse_case(text: str) -> ParsedCase:
             tip_end = bib_start_idx
         tip_raw = text[tip_start_idx:tip_end].strip()
         tip = re.sub(
-            r"^" + _TIP_KEYWORDS + r"\s*[:.]?\s*\n?",
+            r"^" + _TIP_KEYWORDS + r"\s*[:.;\-]?\s*\n?",
             "", tip_raw, flags=re.IGNORECASE
         ).strip()
 
@@ -347,14 +380,14 @@ def parse_case(text: str) -> ParsedCase:
         bib_text = text[bib_header_end:].strip()
         # Also strip header if it leaked
         bib_text = re.sub(
-            r"^" + _BIB_KEYWORDS + r"\s*[:.]?\s*\n?",
+            r"^" + _BIB_KEYWORDS + r"\s*[:.;\-]?\s*\n?",
             "", bib_text, flags=re.IGNORECASE
         ).strip()
         bibliography = _parse_bibliography(bib_text)
     elif bib_start_idx >= 0:
         bib_text = text[bib_start_idx:].strip()
         bib_text = re.sub(
-            r"^" + _BIB_KEYWORDS + r"\s*[:.]?\s*\n?",
+            r"^" + _BIB_KEYWORDS + r"\s*[:.;\-]?\s*\n?",
             "", bib_text, flags=re.IGNORECASE
         ).strip()
         bibliography = _parse_bibliography(bib_text)
