@@ -159,6 +159,25 @@ class SupabaseClient:
             logger.error(f"Error retrieving case images: {e}")
             return []
 
+    def delete_case(self, case_uuid: str) -> bool:
+        """
+        Delete a case from the database.
+        Used to clean up unpublished preview cases.
+
+        Args:
+            case_uuid: Case UUID to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            self.service_client.table("cases").delete().eq("id", case_uuid).execute()
+            logger.info(f"Case deleted: {case_uuid}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting case: {e}")
+            return False
+
     def get_next_case_number(self) -> int:
         """
         Get the next case number for display.
