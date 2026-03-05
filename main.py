@@ -474,11 +474,51 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Warn admin when they send a document instead of a photo."""
+    """Handle documents: accept image files at full resolution, warn for other types."""
     if not update.message:
         return STATE_WAITING_IMAGES
+
+    doc = update.message.document
+    if not doc:
+        return STATE_WAITING_IMAGES
+
+    # Check if the document is an image (sent as file for full quality)
+    mime = doc.mime_type or ""
+    if mime.startswith("image/"):
+        try:
+            file = await context.bot.get_file(doc.file_id)
+            doc_bytes = await file.download_as_bytearray()
+
+            # Determine extension from mime type
+            ext_map = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/heic": "heic"}
+            ext = ext_map.get(mime, "jpg")
+            filename = f"photo_{doc.file_id}.{ext}"
+
+            image_url = supabase.upload_image(bytes(doc_bytes), filename)
+
+            if not image_url:
+                await update.message.reply_text("❌ Error al subir la imagen. Intenta de nuevo.")
+                return STATE_WAITING_IMAGES
+
+            # Add to pending case
+            if "images" not in context.user_data["pending_case"]:
+                context.user_data["pending_case"]["images"] = []
+            context.user_data["pending_case"]["images"].append(image_url)
+
+            image_count = len(context.user_data["pending_case"]["images"])
+            await update.message.reply_text(
+                f"🖼️ Imagen {image_count} agregada (calidad original). Envía más o /publicar"
+            )
+            return STATE_WAITING_IMAGES
+
+        except Exception as e:
+            logger.error(f"Error handling image document: {e}")
+            await update.message.reply_text(f"❌ Error al procesar la imagen: {str(e)}")
+            return STATE_WAITING_IMAGES
+
+    # Not an image document — warn
     await update.message.reply_text(
-        "⚠️ Enviaste un archivo/documento. Para agregar imágenes, envíalas como FOTO (no como archivo).\n"
+        "⚠️ Enviaste un archivo que no es imagen. Para agregar imágenes, envíalas como FOTO o como archivo de imagen.\n"
         "Envía fotos o /publicar para continuar."
     )
     return STATE_WAITING_IMAGES
@@ -1062,11 +1102,11 @@ def main() -> None:
         app.add_handler(CommandHandler("admin", admin_command))
 
         # Regex filter for keyboard button texts (without slash)
-        _BTN_CASO = filters.Regex(r"^(?i)caso$") & ~filters.UpdateType.EDITED_MESSAGE
-        _BTN_PREVIEW = filters.Regex(r"^(?i)preview$") & ~filters.UpdateType.EDITED_MESSAGE
-        _BTN_PUBLICAR = filters.Regex(r"^(?i)publicar$") & ~filters.UpdateType.EDITED_MESSAGE
-        _BTN_CANCELAR = filters.Regex(r"^(?i)cancelar$") & ~filters.UpdateType.EDITED_MESSAGE
-        _BTN_EDITAR = filters.Regex(r"^(?i)editar$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_CASO = filters.Regex(r"(?i)^caso$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_PREVIEW = filters.Regex(r"(?i)^preview$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_PUBLICAR = filters.Regex(r"(?i)^publicar$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_CANCELAR = filters.Regex(r"(?i)^cancelar$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_EDITAR = filters.Regex(r"(?i)^editar$") & ~filters.UpdateType.EDITED_MESSAGE
 
         # Case creation conversation
         case_conv = ConversationHandler(
@@ -1142,7 +1182,7 @@ def main() -> None:
         app.add_handler(MessageHandler(_BTN_CANCELAR, fallback_cancelar))
         app.add_handler(MessageHandler(_BTN_PREVIEW, fallback_preview))
         app.add_handler(MessageHandler(_BTN_PUBLICAR, fallback_publicar))
-        app.add_handler(MessageHandler(filters.Regex(r"^(?i)admin$"), admin_command))
+        app.add_handler(MessageHandler(filters.Regex(r"(?i)^admin$"), admin_command))
 
         # Handler for EDITED messages - re-parse the case when admin edits their message
         async def edited_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
