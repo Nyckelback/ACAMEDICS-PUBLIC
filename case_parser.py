@@ -78,7 +78,7 @@ _JUSTIFICATION_KEYWORDS = (
     r")"
 )
 
-_JUSTIFICATION_PATTERN = r"(?:^|\n)\s*" + _JUSTIFICATION_KEYWORDS + r"\s*[:.;\-]?\s*"
+_JUSTIFICATION_PATTERN = r"(?:^|\n)\s*" + _JUSTIFICATION_KEYWORDS + r"\b\s*[:.;\-]?\s*"
 
 # TIP section header variations
 # Matches: TIP ACAMÉDICO, TIP ACADEMICO, TIP, DATO CLAVE, DATO IMPORTANTE,
@@ -113,7 +113,7 @@ _TIP_KEYWORDS = (
     r")"
 )
 
-_TIP_PATTERN = r"(?:^|\n)\s*" + _TIP_KEYWORDS + r"\s*[:.;\-]?\s*"
+_TIP_PATTERN = r"(?:^|\n)\s*" + _TIP_KEYWORDS + r"\b\s*[:.;\-]?\s*"
 
 # BIBLIOGRAPHY section header variations
 # Matches: BIBLIOGRAFÍA, BIBLIOGRAFIA, REFERENCIAS BIBLIOGRÁFICAS, REFERENCIAS,
@@ -137,7 +137,7 @@ _BIB_KEYWORDS = (
     r")"
 )
 
-_BIB_PATTERN = r"(?:^|\n)\s*" + _BIB_KEYWORDS + r"\s*[:.;\-]?\s*"
+_BIB_PATTERN = r"(?:^|\n)\s*" + _BIB_KEYWORDS + r"\b\s*[:.;\-]?\s*"
 
 # OPTIONS - detect option lines (A. or A) format)
 _OPTION_START = r"^[A-F][.)]\s+"
