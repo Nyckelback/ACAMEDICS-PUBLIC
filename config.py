@@ -1,34 +1,55 @@
-# -*- coding: utf-8 -*-
 """
-CONFIGURACIÓN DEL BOT
+Configuration module for Medical Clinical Cases Telegram Bot.
+Loads environment variables with sensible defaults.
 """
+
 import os
-from zoneinfo import ZoneInfo
+from dotenv import load_dotenv
 
-# ============ TOKEN ============
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
+# Load environment variables from .env file
+load_dotenv()
 
-# ============ CANALES ============
-# Canal público donde se publican los casos
-PUBLIC_CHANNEL_ID = int(os.environ.get("PUBLIC_CHANNEL_ID", "-1002679848195"))
 
-# Canal de justificaciones (solo para compatibilidad con links viejos)
-JUSTIFICATIONS_CHAT_ID = int(os.environ.get("JUSTIFICATIONS_CHAT_ID", "-1003058530208"))
+class Config:
+    """Configuration class with all settings."""
 
-# ============ ADMINS ============
-# IDs de usuarios que pueden usar comandos admin
-# Separados por coma en la variable de entorno
-_admin_ids_str = os.environ.get("ADMIN_USER_IDS", "")
-if _admin_ids_str:
-    ADMIN_USER_IDS = [int(x.strip()) for x in _admin_ids_str.split(",") if x.strip().isdigit()]
-else:
-    # IDs por defecto (agregar tu ID aquí)
-    ADMIN_USER_IDS = [123456789]  # CAMBIAR POR TU ID
+    # Telegram Bot Configuration
+    BOT_TOKEN = os.getenv("BOT_TOKEN", "")
+    ADMIN_USER_IDS = [
+        int(uid.strip())
+        for uid in os.getenv("ADMIN_USER_IDS", "").split(",")
+        if uid.strip()
+    ]
 
-# ============ AUTO-DELETE ============
-# Minutos antes de borrar justificaciones (0 = no borrar)
-AUTO_DELETE_MINUTES = int(os.environ.get("AUTO_DELETE_MINUTES", "10"))
+    # Channel Configuration
+    PUBLIC_CHANNEL_ID = int(os.getenv("PUBLIC_CHANNEL_ID", "0"))
 
-# ============ TIMEZONE ============
-TZNAME = os.environ.get("TIMEZONE", "America/Bogota")
-TZ = ZoneInfo(TZNAME)
+    # Supabase Configuration
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+    SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+
+    # Mini App Configuration
+    MINIAPP_URL = os.getenv("MINIAPP_URL", "")
+
+    # Legacy Configuration
+    JUSTIFICATIONS_CHAT_ID = int(os.getenv("JUSTIFICATIONS_CHAT_ID", "-1003058530208"))
+    AUTO_DELETE_MINUTES = int(os.getenv("AUTO_DELETE_MINUTES", "10"))
+    TZ = os.getenv("TZ", "America/Bogota")
+
+    # Validation
+    @staticmethod
+    def validate():
+        """Validate that all required configuration values are set."""
+        required = ["BOT_TOKEN", "PUBLIC_CHANNEL_ID", "SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY", "MINIAPP_URL"]
+        missing = [key for key in required if not getattr(Config, key)]
+        if missing:
+            raise ValueError(f"Missing required configuration values: {missing}")
+
+
+# Validate on import
+try:
+    Config.validate()
+except ValueError as e:
+    print(f"Configuration Error: {e}")
+    print("Please set all required environment variables before starting the bot.")
