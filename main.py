@@ -82,27 +82,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     args = context.args
 
     if not args:
-        # Welcome message - different for admin vs regular users
+        # Welcome message
+        welcome_text = (
+            "🎓 ¡Bienvenido a ACAMEDICS!\n\n"
+            "Medicina académica basada en evidencia.\n\n"
+            "Cada día publicamos un caso clínico con justificación "
+            "detallada, tips acamédicos y bibliografía actualizada.\n\n"
+            "📋 Responde el caso en el canal\n"
+            "💡 Toca 'VER JUSTIFICACIÓN' para aprender\n"
+            "📈 Fortalece tu razonamiento clínico día a día"
+        )
         if _is_admin(user.id):
-            welcome_text = (
-                "🔧 Panel de Administrador\n\n"
-                "/caso - Crear caso clínico\n"
-                "/admin - Ver todos los comandos"
-            )
             await update.message.reply_text(
                 welcome_text,
                 reply_markup=_admin_keyboard(),
             )
         else:
-            welcome_text = (
-                "🎓 ¡Bienvenido a ACAMEDICS!\n\n"
-                "Somos la comunidad de casos clínicos que te prepara "
-                "para la residencia médica.\n\n"
-                "Cada día publicamos casos con justificaciones "
-                "detalladas, tips acamédicos y bibliografía actualizada.\n\n"
-                "👉 Únete al canal y haz clic en "
-                "'VER JUSTIFICACIÓN' después de responder cada caso."
-            )
             await update.message.reply_text(welcome_text)
         return
 
@@ -317,7 +312,7 @@ async def _delete_message(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle /caso command (admin only) - activate case mode."""
     if not _is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ Solo administradores pueden crear casos.")
+        return  # Silently ignore for non-admins
         return ConversationHandler.END
 
     # Check if there's already a pending case
@@ -933,7 +928,7 @@ async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle /publicar command (admin only) - publish case as quiz poll."""
     if not _is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ Solo administradores pueden publicar casos.")
+        return  # Silently ignore for non-admins
         return ConversationHandler.END
 
     # Double-publish protection
@@ -1083,8 +1078,7 @@ async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /admin command - show admin commands."""
     if not _is_admin(update.effective_user.id):
-        await update.message.reply_text("❌ Solo administradores pueden usar este comando.")
-        return
+        return  # Silently ignore for non-admins
 
     admin_text = (
         "🔧 **Comandos de Administrador:**\n\n"
@@ -1109,15 +1103,36 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command."""
-    help_text = (
-        "ℹ️ **Ayuda**\n\n"
-        "Este bot gestiona casos clínicos médicos.\n\n"
-        "**Para usuarios:**\n"
-        "/start - Mensaje de bienvenida\n\n"
-        "**Para administradores:**\n"
-        "/admin - Ver comandos de admin\n"
+    import random
+    help_messages = [
+        (
+            "🎓 **ACAMEDICS — Medicina académica**\n\n"
+            "Cada día publicamos un caso clínico en el canal. "
+            "Respóndelo y luego toca 'VER JUSTIFICACIÓN' para "
+            "descubrir el análisis completo con bibliografía.\n\n"
+            "📖 Aprende. Practica. Domina la clínica."
+        ),
+        (
+            "🩺 **¿Cómo funciona ACAMEDICS?**\n\n"
+            "1. Lee el caso clínico del día en el canal\n"
+            "2. Elige tu respuesta\n"
+            "3. Toca 'VER JUSTIFICACIÓN' para ver la explicación\n\n"
+            "💡 Cada caso incluye justificación detallada, "
+            "tips acamédicos y bibliografía actualizada."
+        ),
+        (
+            "📚 **ACAMEDICS — Basado en evidencia**\n\n"
+            "Nuestros casos clínicos están diseñados para "
+            "fortalecer tu razonamiento clínico.\n\n"
+            "Entra al canal, responde el caso del día y "
+            "revisa la justificación completa. "
+            "¡Tu conocimiento se construye caso a caso!"
+        ),
+    ]
+    await update.message.reply_text(
+        random.choice(help_messages),
+        parse_mode="Markdown",
     )
-    await update.message.reply_text(help_text, parse_mode="Markdown")
 
 
 def _is_admin(user_id: int) -> bool:
@@ -1139,7 +1154,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     if isinstance(update, Update) and update.effective_message:
         try:
             await update.effective_message.reply_text(
-                "❌ Error interno del bot. Los administradores han sido notificados."
+                "⚠️ Algo salió mal. Intenta de nuevo en unos segundos."
             )
         except Exception as e:
             logger.error(f"Could not send error message: {e}")
@@ -1147,8 +1162,17 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def post_init(application) -> None:
     """Set bot commands menu after initialization."""
-    from telegram import BotCommand
-    commands = [
+    from telegram import BotCommand, BotCommandScopeChat
+
+    # Public commands - visible to everyone
+    public_commands = [
+        BotCommand("start", "🎓 Iniciar"),
+        BotCommand("help", "ℹ️ Ayuda"),
+    ]
+    await application.bot.set_my_commands(public_commands)
+
+    # Admin commands - visible only to admin users
+    admin_commands = [
         BotCommand("caso", "📝 Crear caso clínico"),
         BotCommand("preview", "👁️ Ver preview en Mini App"),
         BotCommand("publicar", "📢 Publicar en el canal"),
@@ -1157,7 +1181,16 @@ async def post_init(application) -> None:
         BotCommand("admin", "🔧 Panel de administrador"),
         BotCommand("help", "ℹ️ Ayuda"),
     ]
-    await application.bot.set_my_commands(commands)
+    for admin_id in Config.ADMIN_USER_IDS:
+        try:
+            await application.bot.set_my_commands(
+                admin_commands,
+                scope=BotCommandScopeChat(chat_id=admin_id),
+            )
+            logger.info(f"Admin commands set for user {admin_id}")
+        except Exception as e:
+            logger.warning(f"Could not set admin commands for {admin_id}: {e}")
+
     logger.info("Bot commands menu registered")
 
 
