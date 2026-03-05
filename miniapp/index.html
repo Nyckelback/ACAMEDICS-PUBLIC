@@ -45,6 +45,7 @@
         .header { display: flex; align-items: center; gap: 5px; padding: 16px 0 10px; }
         .header-emoji { font-size: 22px; line-height: 1; }
         .header-brand { font-family: var(--font-title); font-size: 22px; font-weight: 700; color: var(--navy); letter-spacing: -0.02em; line-height: 1; }
+        .header-brand-img { height: 22px; width: auto; display: block; }
         .header-right { margin-left: auto; }
         .font-cycle-btn { border: none; background: transparent; font-family: var(--font-title); font-size: 16px; font-weight: 600; color: var(--text-muted); cursor: pointer; padding: 4px 2px; letter-spacing: -0.5px; opacity: 0.5; transition: opacity 0.2s, color 0.2s; -webkit-tap-highlight-color: transparent; }
         .font-cycle-btn:active, .font-cycle-btn.active { opacity: 1; color: var(--teal-primary); }
@@ -63,7 +64,7 @@
         .answer-color-strip span:nth-child(3) { background: var(--teal); }
         .answer-color-strip span:nth-child(4) { background: var(--teal-primary); }
         .answer-color-strip span:nth-child(5) { background: var(--teal-light); }
-        .section-title { font-family: var(--font-title); font-size: 24px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.01em; margin: 30px 0 18px; line-height: 1.25; }
+        .section-title { font-family: var(--font-title); font-size: 28px; font-weight: 400; color: var(--navy); text-transform: uppercase; letter-spacing: 0.01em; margin: 30px 0 18px; line-height: 1.25; }
         .justification-wrap { position: relative; margin-bottom: 8px; }
         .justification { font-family: var(--font-body); font-size: var(--font-size-base); color: var(--text) !important; line-height: 1.5; text-align: justify; transition: font-size 0.2s ease; }
         .justification p { margin-bottom: 14px; position: relative; }
@@ -123,7 +124,7 @@
         .lightbox-hint { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 12px; }
         @media (max-width: 480px) {
             .app-container { padding: 0 18px; } .header-brand { font-size: 22px; }
-            .section-title { font-size: 20px; } .answer-text { font-size: 15px; }
+            .section-title { font-size: 23px; } .answer-text { font-size: 15px; }
             .bib-grid { grid-template-columns: 1fr; }
             .footer { flex-direction: column; gap: 12px; }
             .justification p::before { left: -13px; }
@@ -132,7 +133,7 @@
         }
         @media (min-width: 768px) {
             :root { --font-size-base: 18px; }
-            .section-title { font-size: 26px; } .answer-text { font-size: 17px; }
+            .section-title { font-size: 30px; } .answer-text { font-size: 17px; }
             .tip-text { font-size: 17px; } .bib-item-text { font-size: 14px; }
         }
     </style>
@@ -218,7 +219,7 @@
 
         function renderCase(d) {
             let h = '';
-            h += '<div class="header"><div class="header-emoji">🎓</div><div><div class="header-brand">ACAMEDICS</div><div class="header-bars"><span></span><span></span><span></span></div></div><div class="header-right"><button class="font-cycle-btn" id="fontCycle">Aa</button></div></div>';
+            h += '<div class="header"><div class="header-emoji">🎓</div><div><div class="header-brand"><img class="header-brand-img" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo.png" alt="ACAMEDICS" onerror="this.style.display=\'none\';this.parentNode.textContent=\'ACAMEDICS\';"></div><div class="header-bars"><span></span><span></span><span></span></div></div><div class="header-right"><button class="font-cycle-btn" id="fontCycle">Aa</button></div></div>';
             if (d.correct_letter && d.correct_text) {
                 h += '<div class="answer-card"><div class="answer-label">CORRECTA:</div><div class="answer-text">'+esc(d.correct_letter.toUpperCase())+'. '+esc(d.correct_text)+'</div>';
                 h += '<div class="answer-color-strip"><span></span><span></span><span></span><span></span><span></span></div></div>';
