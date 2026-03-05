@@ -550,6 +550,12 @@ def main() -> None:
         logger.info("Bot handlers registered")
         logger.info("Starting bot in polling mode...")
 
+        # Ensure event loop exists (required for Python 3.14+)
+        try:
+            asyncio.get_event_loop()
+        except RuntimeError:
+            asyncio.set_event_loop(asyncio.new_event_loop())
+
         # Start the bot (blocking call)
         app.run_polling()
 
