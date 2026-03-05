@@ -326,6 +326,15 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         return STATE_WAITING_IMAGES
 
 
+async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Warn admin when they send a document instead of a photo."""
+    await update.message.reply_text(
+        "⚠️ Enviaste un archivo/documento. Para agregar imágenes, envíalas como FOTO (no como archivo).\n"
+        "Envía fotos o /publicar para continuar."
+    )
+    return STATE_WAITING_IMAGES
+
+
 async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle /publicar command (admin only) - publish case as quiz poll."""
     if not _is_admin(update.effective_user.id):
@@ -525,6 +534,7 @@ def main() -> None:
                 ],
                 STATE_WAITING_IMAGES: [
                     MessageHandler(filters.PHOTO, image_handler),
+                    MessageHandler(filters.Document.ALL, document_warning_handler),
                     CommandHandler("publicar", publicar_command),
                     CommandHandler("cancelar", cancelar_command),
                 ],
