@@ -32,6 +32,7 @@ from telegram.ext import (
     ConversationHandler,
 )
 from telegram.error import TelegramError
+from telegram.constants import ChatAction
 
 from config import Config
 from case_parser import parse_case, validate_case
@@ -321,6 +322,9 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not update.message:
         return STATE_CASE_MODE
     try:
+        # Show typing indicator while parsing
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
         # Parse the case
         parsed = parse_case(update.message.text)
 
@@ -441,6 +445,19 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         if not update.message.photo:
             return STATE_WAITING_IMAGES
 
+        logger.info(f"Photo received from user {update.effective_user.id}")
+
+        # Guard: ensure pending_case exists
+        pending = context.user_data.get("pending_case")
+        if not pending:
+            await update.message.reply_text(
+                "⚠️ No hay caso en preparación. Usa /caso primero y luego envía las fotos."
+            )
+            return STATE_WAITING_IMAGES
+
+        # Immediate feedback: show upload indicator
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
+
         # Get the largest photo
         photo = update.message.photo[-1]
         file = await context.bot.get_file(photo.file_id)
@@ -484,8 +501,21 @@ async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT
 
     # Check if the document is an image (sent as file for full quality)
     mime = doc.mime_type or ""
+    logger.info(f"Document received: mime={mime}, filename={doc.file_name}, from user {update.effective_user.id}")
+
     if mime.startswith("image/"):
         try:
+            # Guard: ensure pending_case exists
+            pending = context.user_data.get("pending_case")
+            if not pending:
+                await update.message.reply_text(
+                    "⚠️ No hay caso en preparación. Usa /caso primero y luego envía las fotos."
+                )
+                return STATE_WAITING_IMAGES
+
+            # Immediate feedback: show upload indicator
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.UPLOAD_PHOTO)
+
             file = await context.bot.get_file(doc.file_id)
             doc_bytes = await file.download_as_bytearray()
 
@@ -501,9 +531,9 @@ async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT
                 return STATE_WAITING_IMAGES
 
             # Add to pending case
-            if "images" not in context.user_data["pending_case"]:
-                context.user_data["pending_case"]["images"] = []
-            context.user_data["pending_case"]["images"].append(image_url)
+            if "images" not in pending:
+                pending["images"] = []
+            pending["images"].append(image_url)
 
             image_count = len(context.user_data["pending_case"]["images"])
             await update.message.reply_text(
@@ -814,6 +844,9 @@ async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text("❌ No hay caso en preparación.")
             return STATE_WAITING_IMAGES
 
+        # Show typing indicator while generating preview
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
         # Save case to Supabase (unpublished) for preview
         preview_uuid = context.user_data.get("preview_uuid")
         if preview_uuid:
@@ -871,6 +904,9 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         if not pending_case:
             await update.message.reply_text("❌ No hay un caso en preparación.")
             return ConversationHandler.END
+
+        # Show typing indicator while publishing
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
         # Mark as published IMMEDIATELY to prevent race conditions
         context.user_data["published"] = True
@@ -1183,6 +1219,31 @@ def main() -> None:
         app.add_handler(MessageHandler(_BTN_PREVIEW, fallback_preview))
         app.add_handler(MessageHandler(_BTN_PUBLICAR, fallback_publicar))
         app.add_handler(MessageHandler(filters.Regex(r"(?i)^admin$"), admin_command))
+
+        # Fallback handlers for photos/documents sent outside conversation
+        # (e.g., after bot restart when ConversationHandler state is lost)
+        async def fallback_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+            if not _is_admin(update.effective_user.id):
+                return
+            logger.info(f"Photo received outside conversation from user {update.effective_user.id}")
+            await update.message.reply_text(
+                "📸 Recibí tu imagen, pero no hay un caso activo.\n"
+                "Usa /caso para crear un caso primero, luego envía las fotos."
+            )
+
+        async def fallback_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+            if not _is_admin(update.effective_user.id):
+                return
+            doc = update.message.document
+            if doc and (doc.mime_type or "").startswith("image/"):
+                logger.info(f"Image document received outside conversation from user {update.effective_user.id}")
+                await update.message.reply_text(
+                    "📸 Recibí tu imagen, pero no hay un caso activo.\n"
+                    "Usa /caso para crear un caso primero, luego envía las fotos."
+                )
+
+        app.add_handler(MessageHandler(filters.PHOTO & ~filters.UpdateType.EDITED_MESSAGE, fallback_photo))
+        app.add_handler(MessageHandler(filters.Document.ALL & ~filters.UpdateType.EDITED_MESSAGE, fallback_document))
 
         # Handler for EDITED messages - re-parse the case when admin edits their message
         async def edited_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
