@@ -405,13 +405,14 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         logger.info(f"Poll published for case {case_uuid}: {poll_msg.message_id}")
 
-        # Send second message with justification button
+        # Send second message with Mini App button (opens directly in channel)
+        miniapp_short_name = Config.MINIAPP_SHORT_NAME
         keyboard = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
                         text="VER JUSTIFICACIÓN 💬",
-                        url=f"https://t.me/{context.bot.username}?start=case_{case_uuid}",
+                        url=f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={case_uuid}",
                     )
                 ]
             ]
