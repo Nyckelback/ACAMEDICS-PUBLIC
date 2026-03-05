@@ -1,473 +1,551 @@
-# -*- coding: utf-8 -*-
 """
-MAIN.PY - Bot de casos clínicos
-TODO INTEGRADO - Sin imports externos problemáticos
-PROTECCIÓN: Timeout + try/except para no trabarse
+Medical Clinical Cases Telegram Bot.
+Main entry point for the bot using python-telegram-bot v21.6
 """
+
 import logging
 import asyncio
-import re
-from typing import Dict, List, Optional
+import io
+from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
+import pytz
 
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardRemove
 from telegram.ext import (
-    Application, 
-    CommandHandler, 
-    MessageHandler, 
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
     filters,
-    ContextTypes
+    ConversationHandler,
 )
+from telegram.error import TelegramError
 
-from config import BOT_TOKEN, ADMIN_USER_IDS, TZ
+from config import Config
+from case_parser import parse_case, validate_case
+from supabase_client import init_supabase
+from justification_messages import get_random_message
 
-# ============ CONFIGURACIÓN ============
-try:
-    from config import AUTO_DELETE_MINUTES
-except ImportError:
-    AUTO_DELETE_MINUTES = 10
-
-try:
-    from config import JUSTIFICATIONS_CHAT_ID
-except ImportError:
-    JUSTIFICATIONS_CHAT_ID = -1003058530208
-
-# Logging
+# Configure logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# ============ ESTADO GLOBAL ============
-channel_cache: Dict[str, int] = {}
-pending_deletions: Dict[int, List[tuple]] = {}
-last_sent: Dict[int, List[int]] = {}
+# State constants
+STATE_CASE_MODE = 1
+STATE_WAITING_IMAGES = 2
+
+# Supabase client
+supabase = None
+app = None
 
 
-def is_admin(user_id: int) -> bool:
-    return user_id in ADMIN_USER_IDS
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Handle /start command.
+    If args provided: deep link processing
+    If no args: welcome message
+    """
+    user = update.effective_user
+    args = context.args
 
-
-# ============ FUNCIONES DE JUSTIFICACIONES (INTEGRADAS) ============
-
-async def resolve_channel(bot, identifier: str) -> Optional[int]:
-    """Resuelve username a chat_id con cache."""
-    if identifier.isdigit():
-        return int(f"-100{identifier}")
-    
-    if identifier in channel_cache:
-        return channel_cache[identifier]
-    
-    try:
-        chat = await bot.get_chat(f"@{identifier}")
-        channel_cache[identifier] = chat.id
-        logger.info(f"📦 Cache: @{identifier} → {chat.id}")
-        return chat.id
-    except Exception as e:
-        logger.error(f"❌ No se pudo resolver @{identifier}: {e}")
-        return None
-
-
-async def delete_previous_messages(bot, user_id: int):
-    """Borra mensajes anteriores del usuario."""
-    if user_id not in last_sent:
+    if not args:
+        # Welcome message for new users
+        welcome_text = (
+            "👋 ¡Bienvenido al Bot de Casos Clínicos Médicos!\n\n"
+            "Este bot está diseñado para ayudarte a estudiar y practicar casos clínicos.\n\n"
+            "📚 Características:\n"
+            "• Acceso a justificaciones detalladas\n"
+            "• Mini App con explicaciones completas\n"
+            "• Casos organizados por especialidad\n\n"
+            "¿Cómo usar?\n"
+            "Haz clic en los botones 'VER JUSTIFICACIÓN' en el canal público."
+        )
+        await update.message.reply_text(welcome_text)
         return
-    
-    msg_ids = last_sent.pop(user_id, [])
-    for mid in msg_ids:
-        try:
-            await bot.delete_message(chat_id=user_id, message_id=mid)
-        except:
-            pass
+
+    # Process deep link
+    deep_link = args[0]
+    logger.info(f"Processing deep link: {deep_link} for user {user.id}")
+
+    # NEW FORMAT: case_UUID
+    if deep_link.startswith("case_"):
+        await _handle_new_format_deeplink(update, context, deep_link)
+        return
+
+    # OLD FORMATS: backward compatibility
+    await _handle_old_format_deeplink(update, context, deep_link)
 
 
-async def send_protected_content(
-    context: ContextTypes.DEFAULT_TYPE,
-    user_id: int,
-    source_chat_id: int,
-    message_ids: List[int],
-    with_joke: bool
-):
-    """Envía contenido protegido al usuario."""
-    # Borrar mensajes anteriores
-    await delete_previous_messages(context.bot, user_id)
-    
-    sent_msg_ids = []
-    
+async def _handle_new_format_deeplink(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, deep_link: str
+) -> None:
+    """Handle new format deep links: case_UUID"""
     try:
+        case_uuid = deep_link.replace("case_", "")
+
+        # Send Mini App button
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="📖 VER JUSTIFICACIÓN",
+                        web_app=WebAppInfo(url=f"{Config.MINIAPP_URL}?case={case_uuid}"),
+                    )
+                ]
+            ]
+        )
+
+        await update.message.reply_text(
+            "Abre tu justificación:",
+            reply_markup=keyboard,
+        )
+
+        # Send random funny message
+        funny_msg = get_random_message()
+        msg = await update.message.reply_text(funny_msg)
+
+        # Schedule auto-delete
+        if Config.AUTO_DELETE_MINUTES > 0:
+            context.job_queue.run_once(
+                _delete_message,
+                when=timedelta(minutes=Config.AUTO_DELETE_MINUTES),
+                data=(update.effective_chat.id, msg.message_id),
+            )
+
+        logger.info(f"Mini App accessed for case {case_uuid}")
+    except Exception as e:
+        logger.error(f"Error handling new format deep link: {e}")
+        await update.message.reply_text("❌ Error al procesar el enlace.")
+
+
+async def _handle_old_format_deeplink(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, deep_link: str
+) -> None:
+    """
+    Handle old format deep links for backward compatibility.
+    Formats: just_XX, j_XX, number only, p_USERNAME_MSGIDS, c_CHATID_MSGIDS, with optional n_ prefix for no joke
+    """
+    try:
+        user_id = update.effective_user.id
+        source_chat_id = Config.JUSTIFICATIONS_CHAT_ID
+        message_ids = []
+        with_joke = True
+
+        working = deep_link
+
+        # n_ prefix = no joke
+        if working.startswith("n_"):
+            with_joke = False
+            working = working[2:]
+
+        if working.startswith("just_"):
+            msg_id = int(working[5:])
+            message_ids = [msg_id]
+        elif working.startswith("j_"):
+            msg_id = int(working[2:])
+            message_ids = [msg_id]
+        elif working.isdigit():
+            message_ids = [int(working)]
+        elif working.startswith("p_"):
+            # p_USERNAME_MSGIDS - public channel
+            # Find the last underscore to split username from message IDs
+            parts = working[2:].rsplit("_", 1)
+            if len(parts) == 2:
+                username = parts[0]
+                msg_id_str = parts[1]
+                message_ids = [int(x) for x in msg_id_str.split("-")]
+                try:
+                    chat = await context.bot.get_chat(f"@{username}")
+                    source_chat_id = chat.id
+                except:
+                    pass
+        elif working.startswith("c_"):
+            # c_CHATID_MSGIDS - private channel
+            parts = working[2:].split("_")
+            if len(parts) == 2:
+                source_chat_id = int(f"-100{parts[0]}")
+                message_ids = [int(x) for x in parts[1].split("-")]
+
+        if not message_ids:
+            logger.warning(f"Could not parse old format deep link: {deep_link}")
+            await update.message.reply_text("❌ Enlace inválido.")
+            return
+
+        # Send each message
+        sent_ids = []
         for msg_id in message_ids:
             try:
                 sent = await context.bot.copy_message(
                     chat_id=user_id,
                     from_chat_id=source_chat_id,
                     message_id=msg_id,
-                    protect_content=True
+                    protect_content=True,
                 )
-                sent_msg_ids.append(sent.message_id)
-                await asyncio.sleep(0.3)  # Pequeña pausa
+                sent_ids.append(sent.message_id)
             except Exception as e:
-                logger.error(f"❌ Error copiando msg {msg_id}: {e}")
-        
-        if not sent_msg_ids:
-            await context.bot.send_message(user_id, "❌ No se pudo obtener el contenido.")
+                logger.error(f"Error copying msg {msg_id}: {e}")
+
+        if not sent_ids:
+            await update.message.reply_text("❌ Justificación no encontrada.")
             return
-        
-        # Mensaje de acompañamiento
+
+        # Funny message
         if with_joke:
-            try:
-                from justification_messages import get_random_message
-                text = get_random_message()
-            except:
-                text = "📚 ¡Contenido entregado!"
+            funny = get_random_message()
         else:
-            text = "📦 ¡Contenido entregado!"
-        
-        companion = await context.bot.send_message(user_id, text)
-        sent_msg_ids.append(companion.message_id)
-        
-        # Guardar para borrar después
-        last_sent[user_id] = sent_msg_ids.copy()
-        
-        # Agendar eliminación
-        if AUTO_DELETE_MINUTES > 0:
-            now = datetime.now(TZ)
-            if user_id not in pending_deletions:
-                pending_deletions[user_id] = []
-            for mid in sent_msg_ids:
-                pending_deletions[user_id].append((mid, now))
-        
-    except Exception as e:
-        logger.error(f"❌ Error enviando contenido: {e}")
+            funny = "📦 ¡Contenido entregado!"
+        msg = await update.message.reply_text(funny)
+        sent_ids.append(msg.message_id)
 
-
-async def process_deep_link(update: Update, context: ContextTypes.DEFAULT_TYPE, param: str) -> bool:
-    """
-    Procesa el parámetro del deep link.
-    Retorna True si se manejó, False si no se reconoció.
-    """
-    user_id = update.effective_user.id
-    logger.info(f"🔍 Deep link: user={user_id}, param='{param}'")
-    
-    try:
-        # ========== FORMATO: just_30 ==========
-        if param.startswith('just_'):
-            msg_id = int(param[5:])
-            await send_protected_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [msg_id], True)
-            return True
-        
-        # ========== FORMATO: solo número ==========
-        if param.isdigit():
-            msg_id = int(param)
-            await send_protected_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [msg_id], True)
-            return True
-        
-        # ========== FORMATO: j_30 ==========
-        if param.startswith('j_'):
-            msg_id = int(param[2:])
-            await send_protected_content(context, user_id, JUSTIFICATIONS_CHAT_ID, [msg_id], True)
-            return True
-        
-        # ========== NUEVOS FORMATOS ==========
-        with_joke = True
-        working = param
-        
-        # Prefijo n_ = sin chiste
-        if param.startswith('n_'):
-            with_joke = False
-            working = param[2:]
-        
-        # p_USERNAME_MSGIDS (canal público)
-        if working.startswith('p_'):
-            parts = working[2:].rsplit('_', 1)
-            if len(parts) == 2:
-                username = parts[0]
-                msg_ids = [int(x) for x in parts[1].split('-')]
-                
-                chat_id = await resolve_channel(context.bot, username)
-                if chat_id:
-                    await send_protected_content(context, user_id, chat_id, msg_ids, with_joke)
-                    return True
-                else:
-                    await update.message.reply_text("❌ No se pudo acceder al canal")
-                    return True
-        
-        # c_CHATID_MSGIDS (canal privado)
-        if working.startswith('c_'):
-            parts = working[2:].split('_')
-            if len(parts) == 2:
-                chat_id = int(f"-100{parts[0]}")
-                msg_ids = [int(x) for x in parts[1].split('-')]
-                await send_protected_content(context, user_id, chat_id, msg_ids, with_joke)
-                return True
-        
-    except Exception as e:
-        logger.error(f"❌ Error procesando deep link '{param}': {e}")
-        # NO re-lanzar, solo log
-    
-    return False
-
-
-# ============ COMANDO /START ============
-
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    /start - Maneja deep links o muestra bienvenida.
-    ROBUSTO: No se traba aunque falle.
-    """
-    if not update.message:
-        return
-    
-    user_id = update.effective_user.id
-    
-    try:
-        # ¿Tiene parámetro de deep link?
-        if context.args and len(context.args) > 0:
-            param = context.args[0]
-            
-            # Si es admin, limpiar estados
-            if is_admin(user_id):
-                context.user_data.clear()
-                try:
-                    from batch_handler import batch_mode, active_batches
-                    batch_mode[user_id] = False
-                    active_batches.pop(user_id, None)
-                except:
-                    pass
-            
-            # Procesar deep link (con timeout de 10 segundos)
-            try:
-                handled = await asyncio.wait_for(
-                    process_deep_link(update, context, param),
-                    timeout=10.0
+        # Schedule auto-delete for ALL sent messages
+        if Config.AUTO_DELETE_MINUTES > 0:
+            for mid in sent_ids:
+                context.job_queue.run_once(
+                    _delete_message,
+                    when=timedelta(minutes=Config.AUTO_DELETE_MINUTES),
+                    data=(user_id, mid),
                 )
-                if handled:
-                    return
-            except asyncio.TimeoutError:
-                logger.error(f"⏰ Timeout procesando deep link: {param}")
-                await update.message.reply_text("⏰ Tiempo agotado. Intenta de nuevo.")
-                return
-            except Exception as e:
-                logger.error(f"❌ Error en deep link: {e}")
-                # Continuar a bienvenida
-        
-        # Bienvenida normal
-        await update.message.reply_text(
-            "👋 ¡Bienvenido!\n\n"
-            "Este bot envía casos clínicos educativos.\n"
-            "Suscríbete al canal para recibir contenido."
-        )
-    
+
+    except ValueError as e:
+        logger.error(f"Error parsing old format deep link: {e}")
+        await update.message.reply_text("❌ Enlace inválido.")
     except Exception as e:
-        logger.error(f"❌ Error fatal en cmd_start: {e}")
-        # NO re-lanzar para no trabar el bot
+        logger.error(f"Error handling old format deep link: {e}")
+        await update.message.reply_text("❌ Error al procesar el enlace.")
 
 
-# ============ OTROS COMANDOS ============
+async def _delete_message(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Delete a message after timeout."""
+    try:
+        chat_id, message_id = context.job.data
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        logger.warning(f"Could not delete message: {e}")
 
-async def cmd_myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra tu ID"""
+
+async def caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /caso command (admin only) - activate case mode."""
+    if not _is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Solo administradores pueden crear casos.")
+        return ConversationHandler.END
+
+    # Initialize conversation data
+    context.user_data["pending_case"] = None
+    context.user_data["images"] = []
+
     await update.message.reply_text(
-        f"🆔 Tu User ID: `{update.effective_user.id}`",
-        parse_mode="Markdown"
+        "📝 Envía el caso clínico completo (viñeta + opciones + CORRECTA + justificación + tip + bibliografía)"
     )
+    return STATE_CASE_MODE
 
 
-async def cmd_lote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa modo lote"""
-    if not is_admin(update.effective_user.id):
-        return
-    
+async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle text input in case mode."""
+    try:
+        # Parse the case
+        parsed = parse_case(update.message.text)
+
+        if not parsed.parsed_ok:
+            error_text = "❌ Error al parsear el caso:\n\n"
+            error_text += "\n".join(f"• {err}" for err in parsed.errors)
+            error_text += "\n\n📝 Envía nuevamente el caso completo:"
+            await update.message.reply_text(error_text)
+            return STATE_CASE_MODE
+
+        # Validate the case
+        is_valid, val_errors = validate_case(parsed)
+        if not is_valid:
+            error_text = "❌ Caso inválido:\n\n"
+            error_text += "\n".join(f"• {err}" for err in val_errors)
+            error_text += "\n\n📝 Envía nuevamente el caso completo:"
+            await update.message.reply_text(error_text)
+            return STATE_CASE_MODE
+
+        # Store parsed case in context
+        context.user_data["pending_case"] = parsed.to_dict()
+        context.user_data["pending_case"]["images"] = []
+
+        # Show preview
+        preview = (
+            f"✅ CASO PARSEADO CORRECTAMENTE\n\n"
+            f"📋 Viñeta: {parsed.vignette[:100]}{'...' if len(parsed.vignette) > 100 else ''}\n"
+            f"📊 Opciones: {', '.join(opt['letter'] for opt in parsed.options)}\n"
+            f"✅ Correcta: {parsed.correct_letter}\n"
+            f"📝 Justificación: {parsed.justification[:100]}{'...' if len(parsed.justification) > 100 else ''}\n"
+            f"💡 Tip: {parsed.tip[:80] if parsed.tip else '(vacío)'}{'...' if len(parsed.tip) > 80 else ''}\n"
+            f"📚 Bibliografía: {len(parsed.bibliography)} referencias\n\n"
+            f"Envía imágenes si quieres agregar, o /publicar para enviar al canal."
+        )
+        await update.message.reply_text(preview)
+        return STATE_WAITING_IMAGES
+
+    except Exception as e:
+        logger.error(f"Error processing case: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+        return STATE_CASE_MODE
+
+
+async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle photo uploads in waiting_images state."""
+    try:
+        if not update.message.photo:
+            return STATE_WAITING_IMAGES
+
+        # Get the largest photo
+        photo = update.message.photo[-1]
+        file = await context.bot.get_file(photo.file_id)
+
+        # Download photo
+        photo_bytes = await file.download_as_bytearray()
+
+        # Upload to Supabase
+        filename = f"photo_{photo.file_id}.jpg"
+        image_url = supabase.upload_image(bytes(photo_bytes), filename)
+
+        if not image_url:
+            await update.message.reply_text("❌ Error al subir la imagen. Intenta de nuevo.")
+            return STATE_WAITING_IMAGES
+
+        # Add to pending case
+        if "images" not in context.user_data["pending_case"]:
+            context.user_data["pending_case"]["images"] = []
+        context.user_data["pending_case"]["images"].append(image_url)
+
+        image_count = len(context.user_data["pending_case"]["images"])
+        await update.message.reply_text(
+            f"🖼️ Imagen {image_count} agregada. Envía más o /publicar"
+        )
+        return STATE_WAITING_IMAGES
+
+    except Exception as e:
+        logger.error(f"Error handling image: {e}")
+        await update.message.reply_text(f"❌ Error al procesar la imagen: {str(e)}")
+        return STATE_WAITING_IMAGES
+
+
+async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /publicar command (admin only) - publish case as quiz poll."""
+    if not _is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Solo administradores pueden publicar casos.")
+        return ConversationHandler.END
+
+    try:
+        pending_case = context.user_data.get("pending_case")
+        if not pending_case:
+            await update.message.reply_text("❌ No hay un caso en preparación.")
+            return ConversationHandler.END
+
+        # Get case number BEFORE saving (so count is accurate)
+        case_number = supabase.get_next_case_number()
+
+        # Save case to Supabase
+        case_uuid = supabase.save_case(pending_case)
+        if not case_uuid:
+            await update.message.reply_text("❌ Error al guardar el caso en la base de datos.")
+            return ConversationHandler.END
+
+        # Prepare poll data
+        vignette = pending_case["vignette"]
+        options = pending_case["options"]
+
+        # If vignette is too long for poll question (300 char limit), send it as text first
+        poll_question = vignette
+        if len(vignette) > 290:
+            # Send vignette as separate message
+            await context.bot.send_message(
+                chat_id=Config.PUBLIC_CHANNEL_ID,
+                text=vignette,
+            )
+            # Use shorter question
+            poll_question = "¿Cuál es la respuesta correcta?"
+
+        # Prepare option texts
+        option_texts = []
+        for opt in options:
+            full = f"{opt['letter']}. {opt['text']}"
+            # Telegram limit is 100 chars per option
+            if len(full) > 100:
+                full = full[:97] + "..."
+            option_texts.append(full)
+
+        correct_letter = pending_case["correct_letter"]
+        correct_index = next(
+            (i for i, opt in enumerate(options) if opt["letter"] == correct_letter),
+            0,
+        )
+
+        # Prepare explanation (first 200 chars)
+        explanation = pending_case["justification"][:200]
+
+        # Send poll to channel
+        poll_msg = await context.bot.send_poll(
+            chat_id=Config.PUBLIC_CHANNEL_ID,
+            question=poll_question,
+            options=option_texts,
+            type="quiz",
+            correct_option_id=correct_index,
+            explanation=explanation,
+            is_anonymous=True,
+        )
+
+        logger.info(f"Poll published for case {case_uuid}: {poll_msg.message_id}")
+
+        # Send second message with justification button
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="VER JUSTIFICACIÓN 💬",
+                        url=f"https://t.me/{context.bot.username}?start=case_{case_uuid}",
+                    )
+                ]
+            ]
+        )
+
+        button_msg = await context.bot.send_message(
+            chat_id=Config.PUBLIC_CHANNEL_ID,
+            text=f"📚 Caso #{case_number}",
+            reply_markup=keyboard,
+        )
+
+        logger.info(f"Justification button sent: {button_msg.message_id}")
+
+        # Update case with message IDs
+        supabase.update_case(
+            case_uuid,
+            {
+                "telegram_message_id": poll_msg.message_id,
+                "published": True,
+            },
+        )
+
+        # Confirm to admin
+        await update.message.reply_text(
+            f"✅ Caso #{case_number} publicado en el canal.\n"
+            f"UUID: `{case_uuid}`",
+            parse_mode="Markdown",
+        )
+
+        # Clear user data
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error publishing case: {e}")
+        await update.message.reply_text(f"❌ Error al publicar el caso: {str(e)}")
+        return STATE_WAITING_IMAGES
+
+
+async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /cancelar command - cancel case creation."""
     context.user_data.clear()
-    
-    from batch_handler import cmd_lote as batch_cmd_lote
-    await batch_cmd_lote(update, context)
+    await update.message.reply_text("🗑️ Cancelado")
+    return ConversationHandler.END
 
 
-async def cmd_enviar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Envía el lote"""
-    if not is_admin(update.effective_user.id):
+async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /admin command - show admin commands."""
+    if not _is_admin(update.effective_user.id):
+        await update.message.reply_text("❌ Solo administradores pueden usar este comando.")
         return
-    
-    from batch_handler import cmd_enviar as batch_cmd_enviar
-    await batch_cmd_enviar(update, context)
 
-
-async def cmd_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancela todo"""
-    if not is_admin(update.effective_user.id):
-        return
-    
-    user_id = update.effective_user.id
-    context.user_data.clear()
-    
-    try:
-        from batch_handler import batch_mode, active_batches
-        batch_mode[user_id] = False
-        active_batches.pop(user_id, None)
-    except:
-        pass
-    
-    await update.message.reply_text("🗑️ Cancelado.")
-
-
-async def cmd_set_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Configura publicidad"""
-    if not is_admin(update.effective_user.id):
-        return
-    
-    user_id = update.effective_user.id
-    
-    try:
-        from batch_handler import batch_mode, active_batches
-        batch_mode[user_id] = False
-        active_batches.pop(user_id, None)
-    except:
-        pass
-    
-    from ads_handler import cmd_set_ads as ads_cmd_set_ads
-    await ads_cmd_set_ads(update, context)
-
-
-async def cmd_stop_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Detiene publicidad"""
-    if not is_admin(update.effective_user.id):
-        return
-    
-    from ads_handler import cmd_stop_ads as ads_cmd_stop_ads
-    await ads_cmd_stop_ads(update, context)
-
-
-async def cmd_list_ads(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Lista ads activas"""
-    if not is_admin(update.effective_user.id):
-        return
-    
-    from ads_handler import cmd_list_ads as ads_cmd_list_ads
-    await ads_cmd_list_ads(update, context)
-
-
-async def cmd_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Panel admin"""
-    if not is_admin(update.effective_user.id):
-        return
-    
-    await update.message.reply_text(
-        "🔧 **PANEL DE ADMINISTRADOR**\n\n"
-        "**📦 LOTES:**\n"
-        "`/lote` - Iniciar modo lote\n"
-        "`/enviar` - Publicar lote\n"
-        "`/cancelar` - Cancelar proceso\n\n"
-        "**📢 PUBLICIDAD:**\n"
-        "`/set_ads` - Configurar anuncio\n"
-        "`/list_ads` - Ver ads activas\n"
-        "`/stop_ads` - Detener ads\n\n"
-        "**📝 SINTAXIS:**\n"
-        "`%%% t.me/canal/22` → Con chiste\n"
-        "`@@@ Texto | t.me/canal/22` → Sin chiste\n"
-        "`@@@ Texto | @user` → Link directo",
-        parse_mode="Markdown"
+    admin_text = (
+        "🔧 **Comandos de Administrador:**\n\n"
+        "/caso - Iniciar creación de caso clínico\n"
+        "/cancelar - Cancelar operación en curso\n"
+        "/admin - Ver este menú\n\n"
+        "**Flujo de creación:**\n"
+        "1. /caso\n"
+        "2. Envía el caso completo\n"
+        "3. (Opcional) Envía imágenes\n"
+        "4. /publicar para enviar al canal\n"
     )
+    await update.message.reply_text(admin_text, parse_mode="Markdown")
 
 
-# ============ ROUTER DE MENSAJES ============
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Router de mensajes para admins"""
-    if not update.message:
-        return
-    
-    user_id = update.effective_user.id
-    
-    if not is_admin(user_id):
-        return
-    
-    # ADS
-    ads_state = context.user_data.get('ads_state')
-    if ads_state:
-        from ads_handler import handle_ads_message
-        if await handle_ads_message(update, context):
-            return
-    
-    # LOTE
-    try:
-        from batch_handler import batch_mode, handle_batch_message
-        if batch_mode.get(user_id, False):
-            if await handle_batch_message(update, context):
-                return
-    except:
-        pass
-    
-    await update.message.reply_text(
-        "⚠️ No hay modo activo.\n\nUsa `/lote` para empezar.",
-        parse_mode="Markdown"
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /help command."""
+    help_text = (
+        "ℹ️ **Ayuda**\n\n"
+        "Este bot gestiona casos clínicos médicos.\n\n"
+        "**Para usuarios:**\n"
+        "/start - Mensaje de bienvenida\n\n"
+        "**Para administradores:**\n"
+        "/admin - Ver comandos de admin\n"
     )
+    await update.message.reply_text(help_text, parse_mode="Markdown")
 
 
-# ============ LIMPIEZA PERIÓDICA ============
-
-async def cleanup_job(context: ContextTypes.DEFAULT_TYPE):
-    """Elimina mensajes viejos cada minuto."""
-    now = datetime.now(TZ)
-    cutoff = now - timedelta(minutes=AUTO_DELETE_MINUTES)
-    total = 0
-    
-    for user_id in list(pending_deletions.keys()):
-        messages = pending_deletions.get(user_id, [])
-        to_keep = []
-        
-        for msg_id, timestamp in messages:
-            if timestamp < cutoff:
-                try:
-                    await context.bot.delete_message(chat_id=user_id, message_id=msg_id)
-                    total += 1
-                except:
-                    pass
-            else:
-                to_keep.append((msg_id, timestamp))
-        
-        if to_keep:
-            pending_deletions[user_id] = to_keep
-        else:
-            pending_deletions.pop(user_id, None)
-    
-    if total > 0:
-        logger.info(f"🧹 Limpieza: {total} mensajes eliminados")
+def _is_admin(user_id: int) -> bool:
+    """Check if user is admin."""
+    return user_id in Config.ADMIN_USER_IDS
 
 
-# ============ MAIN ============
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle errors in the bot."""
+    logger.error(msg="Exception while handling an update:", exc_info=context.error)
 
-def main():
-    """Función principal"""
-    app = Application.builder().token(BOT_TOKEN).build()
-    
-    # Comandos
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("myid", cmd_myid))
-    app.add_handler(CommandHandler("lote", cmd_lote))
-    app.add_handler(CommandHandler("enviar", cmd_enviar))
-    app.add_handler(CommandHandler("cancelar", cmd_cancelar))
-    app.add_handler(CommandHandler("cancel", cmd_cancelar))
-    app.add_handler(CommandHandler("set_ads", cmd_set_ads))
-    app.add_handler(CommandHandler("stop_ads", cmd_stop_ads))
-    app.add_handler(CommandHandler("list_ads", cmd_list_ads))
-    app.add_handler(CommandHandler("admin", cmd_admin))
-    
-    # Router de mensajes
-    app.add_handler(MessageHandler(
-        filters.ALL & ~filters.COMMAND,
-        handle_message
-    ))
-    
-    # Job de limpieza cada 60 segundos
-    if app.job_queue:
-        app.job_queue.run_repeating(cleanup_job, interval=60, first=10)
-        logger.info(f"⏰ Limpieza automática cada 60s")
-    
-    logger.info("🚀 Bot iniciado!")
-    logger.info("⚠️ Asegúrate de que NO hay otra instancia corriendo")
-    
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # Try to send error message to admin
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text(
+                "❌ Error interno del bot. Los administradores han sido notificados."
+            )
+        except Exception as e:
+            logger.error(f"Could not send error message: {e}")
+
+
+def main() -> None:
+    """Main entry point for the bot."""
+    global supabase, app
+
+    try:
+        # Initialize Supabase
+        supabase = init_supabase(Config.SUPABASE_URL, Config.SUPABASE_KEY, Config.SUPABASE_SERVICE_KEY)
+        logger.info("Supabase initialized")
+
+        # Create bot application
+        app = Application.builder().token(Config.BOT_TOKEN).build()
+
+        # Register handlers
+        # Start command
+        app.add_handler(CommandHandler("start", start_command))
+        app.add_handler(CommandHandler("help", help_command))
+        app.add_handler(CommandHandler("admin", admin_command))
+
+        # Case creation conversation
+        case_conv = ConversationHandler(
+            entry_points=[CommandHandler("caso", caso_command)],
+            states={
+                STATE_CASE_MODE: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, case_text_handler),
+                ],
+                STATE_WAITING_IMAGES: [
+                    MessageHandler(filters.PHOTO, image_handler),
+                    CommandHandler("publicar", publicar_command),
+                    CommandHandler("cancelar", cancelar_command),
+                ],
+            },
+            fallbacks=[CommandHandler("cancelar", cancelar_command)],
+            per_user=True,
+        )
+        app.add_handler(case_conv)
+
+        # Error handler
+        app.add_error_handler(error_handler)
+
+        logger.info("Bot handlers registered")
+        logger.info("Starting bot in polling mode...")
+
+        # Start the bot (blocking call)
+        app.run_polling()
+
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        raise
 
 
 if __name__ == "__main__":
