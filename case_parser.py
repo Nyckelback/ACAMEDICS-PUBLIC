@@ -149,7 +149,11 @@ def _fix_telegram_emojis(text: str) -> str:
     Fix Telegram auto-emoji conversions that break option parsing.
     Telegram converts certain text sequences to emojis:
       B) → 😎 (sunglasses)  D) → 😄 or 😃  :) → various smileys
-    This function detects these at line start and converts them back.
+
+    Two-pass fix:
+    1. Line-start: emoji at start of line → option letter (for option lines)
+    2. Inline: emoji anywhere in text → letter with parenthesis (for justification text)
+       e.g. "opción 😎" → "opción B)"
     """
     # Map of emojis that Telegram creates from option-like text
     emoji_to_option = {
@@ -159,6 +163,17 @@ def _fix_telegram_emojis(text: str) -> str:
         "😀": "D) ",   # D) → grinning
         "😁": "D) ",   # D) variant
     }
+
+    # Inline replacements (for mid-text occurrences like "opción 😎")
+    emoji_to_inline = {
+        "😎": "B)",
+        "😄": "D)",
+        "😃": "D)",
+        "😀": "D)",
+        "😁": "D)",
+    }
+
+    # Pass 1: fix line-start emojis (option lines)
     lines = text.split("\n")
     fixed = []
     for line in lines:
@@ -166,7 +181,6 @@ def _fix_telegram_emojis(text: str) -> str:
         replaced = False
         for emoji, replacement in emoji_to_option.items():
             if stripped.startswith(emoji):
-                # Only replace if it looks like an option line (has text after emoji)
                 rest = stripped[len(emoji):].strip()
                 if rest:
                     fixed.append(replacement + rest)
@@ -174,7 +188,52 @@ def _fix_telegram_emojis(text: str) -> str:
                     break
         if not replaced:
             fixed.append(line)
-    return "\n".join(fixed)
+    result = "\n".join(fixed)
+
+    # Pass 2: fix inline emojis (inside justification, tip, etc.)
+    for emoji, replacement in emoji_to_inline.items():
+        result = result.replace(emoji, replacement)
+
+    return result
+
+
+def _split_inline_options(text: str) -> str:
+    """
+    Split options that are on a single line into separate lines.
+    e.g. "A. Option one  B. Option two  C. Option three"
+    becomes:
+    "A. Option one
+    B. Option two
+    C. Option three"
+
+    This handles cases where the user pastes all options in one paragraph.
+    Only splits when 2+ options are found on the same line.
+    """
+    import re as _re
+    # Pattern: letter followed by . or ) and space, at word boundary
+    option_pat = _re.compile(r'(?<!\w)([A-F][.)]\s)')
+
+    new_lines = []
+    for line in text.split("\n"):
+        matches = list(option_pat.finditer(line))
+        if len(matches) >= 2:
+            # Multiple options on one line - split them
+            parts = []
+            for idx, m in enumerate(matches):
+                start = m.start()
+                end = matches[idx + 1].start() if idx + 1 < len(matches) else len(line)
+                part = line[start:end].strip()
+                if part:
+                    parts.append(part)
+            # If first option doesn't start at position 0, keep the prefix as vignette
+            if matches[0].start() > 0:
+                prefix = line[:matches[0].start()].strip()
+                if prefix:
+                    new_lines.append(prefix)
+            new_lines.extend(parts)
+        else:
+            new_lines.append(line)
+    return "\n".join(new_lines)
 
 
 def parse_case(text: str) -> ParsedCase:
@@ -184,6 +243,8 @@ def parse_case(text: str) -> ParsedCase:
     """
     # Pre-process: fix Telegram emoji conversions
     text = _fix_telegram_emojis(text)
+    # Pre-process: split inline options onto separate lines
+    text = _split_inline_options(text)
 
     errors = []
     vignette = ""
@@ -811,4 +872,56 @@ La opcion D es correcta por razones clinicas."""
     assert p.options[3]["letter"] == "D", f"Test 22 FAIL: fourth option is {p.options[3]['letter']}"
     print("Test 22 PASS: Telegram emoji 😄 → D)")
 
-    print("\n=== ALL 22 TESTS PASSED ===")
+    # ── Test 23: Inline emoji in justification text ──
+    text23 = """Viñeta: Paciente con fiebre.
+A) Opción A
+B) Opción B
+C) Opción C
+D) Opción D
+CORRECTA: A
+Justificación: La opción 😎 no corresponde porque el tratamiento indicado no es ambulatorio. La opción 😄 tampoco es correcta.
+Tip: Recordar el protocolo
+Bibliografía: Ref 1"""
+    p = parse_case(text23)
+    assert p.parsed_ok, f"Test 23 FAIL: {p.errors}"
+    assert "B)" in p.justification, f"Test 23 FAIL: inline 😎 not replaced. Got: {p.justification[:100]}"
+    assert "D)" in p.justification, f"Test 23 FAIL: inline 😄 not replaced. Got: {p.justification[:100]}"
+    assert "😎" not in p.justification, f"Test 23 FAIL: 😎 still in justification"
+    assert "😄" not in p.justification, f"Test 23 FAIL: 😄 still in justification"
+    print("Test 23 PASS: Inline emojis in justification replaced")
+
+    # ── Test 24: Inline options on single line (A. B. C. D. format) ──
+    text24 = """PEDIATRÍA - NUTRICIÓN PEDIÁTRICA
+Niña de 20 meses con desnutrición aguda severa. ¿Cuál es la conducta más adecuada?
+A. Suspender la FTLC y dar egreso  B. Continuar FTLC y seguimiento ambulatorio hasta alcanzar P/T ≥-1 DE  C. Suspender la FTLC e iniciar sulfato ferroso  D. Cambiar a complementación alimentaria convencional
+CORRECTA: B
+La opción B es correcta porque el criterio de egreso exige P/T ≥-1 DE.
+Tip: Recordar criterios de egreso.
+Bibliografía: Resolución 115 de 2026."""
+    p = parse_case(text24)
+    assert p.parsed_ok, f"Test 24 FAIL: {p.errors}"
+    assert len(p.options) == 4, f"Test 24 FAIL: got {len(p.options)} options, expected 4. Options: {[o['letter'] for o in p.options]}"
+    assert p.options[0]["letter"] == "A", f"Test 24 FAIL: first option is {p.options[0]['letter']}"
+    assert p.options[1]["letter"] == "B", f"Test 24 FAIL: second option is {p.options[1]['letter']}"
+    assert p.options[2]["letter"] == "C", f"Test 24 FAIL: third option is {p.options[2]['letter']}"
+    assert p.options[3]["letter"] == "D", f"Test 24 FAIL: fourth option is {p.options[3]['letter']}"
+    assert p.correct_letter == "B", f"Test 24 FAIL: correct is {p.correct_letter}"
+    print("Test 24 PASS: Inline options on single line (A. B. C. D.)")
+
+    # ── Test 25: Mixed - some options on same line, some on separate ──
+    text25 = """Caso clínico de prueba.
+A) Primera opción  B) Segunda opción
+C) Tercera opción
+D) Cuarta opción
+CORRECTA: C
+La C es correcta.
+Tip: Un tip.
+Bibliografía: Ref."""
+    p = parse_case(text25)
+    assert p.parsed_ok, f"Test 25 FAIL: {p.errors}"
+    assert len(p.options) == 4, f"Test 25 FAIL: got {len(p.options)} options"
+    assert p.options[0]["letter"] == "A", f"Test 25 FAIL: first is {p.options[0]['letter']}"
+    assert p.options[1]["letter"] == "B", f"Test 25 FAIL: second is {p.options[1]['letter']}"
+    print("Test 25 PASS: Mixed inline + separate options")
+
+    print("\n=== ALL 25 TESTS PASSED ===")
