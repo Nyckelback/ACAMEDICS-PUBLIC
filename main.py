@@ -58,16 +58,16 @@ app = None
 
 
 def _admin_keyboard() -> ReplyKeyboardMarkup:
-    """Build persistent keyboard for admin with main commands."""
+    """Build collapsible keyboard for admin (shown via grid icon, not persistent)."""
     keyboard = [
-        [KeyboardButton("/caso"), KeyboardButton("/preview")],
-        [KeyboardButton("/publicar"), KeyboardButton("/cancelar")],
-        [KeyboardButton("/editar"), KeyboardButton("/admin")],
+        [KeyboardButton("Caso"), KeyboardButton("Preview")],
+        [KeyboardButton("Publicar"), KeyboardButton("Cancelar")],
+        [KeyboardButton("Editar"), KeyboardButton("Admin")],
     ]
     return ReplyKeyboardMarkup(
         keyboard,
         resize_keyboard=True,
-        is_persistent=True,
+        is_persistent=False,
     )
 
 
@@ -413,13 +413,18 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                     InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
                 ]
             ]
-            await update.message.reply_text(
+            score_msg = await update.message.reply_text(
                 preview, reply_markup=InlineKeyboardMarkup(buttons)
             )
+            # Save score message ID so edited_message_handler can update it in-place
+            context.user_data["score_message_id"] = score_msg.message_id
+            context.user_data["score_chat_id"] = update.effective_chat.id
         else:
             missing = [name for name, ok in checks if not ok]
             preview += f"⚠️ Falta: {', '.join(missing)}\n📝 Envía el caso de nuevo con los campos faltantes"
-            await update.message.reply_text(preview)
+            score_msg = await update.message.reply_text(preview)
+            context.user_data["score_message_id"] = score_msg.message_id
+            context.user_data["score_chat_id"] = update.effective_chat.id
         return STATE_WAITING_IMAGES
 
     except Exception as e:
@@ -1056,9 +1061,19 @@ def main() -> None:
         app.add_handler(CommandHandler("help", help_command))
         app.add_handler(CommandHandler("admin", admin_command))
 
+        # Regex filter for keyboard button texts (without slash)
+        _BTN_CASO = filters.Regex(r"^(?i)caso$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_PREVIEW = filters.Regex(r"^(?i)preview$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_PUBLICAR = filters.Regex(r"^(?i)publicar$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_CANCELAR = filters.Regex(r"^(?i)cancelar$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_EDITAR = filters.Regex(r"^(?i)editar$") & ~filters.UpdateType.EDITED_MESSAGE
+
         # Case creation conversation
         case_conv = ConversationHandler(
-            entry_points=[CommandHandler("caso", caso_command)],
+            entry_points=[
+                CommandHandler("caso", caso_command),
+                MessageHandler(_BTN_CASO, caso_command),
+            ],
             states={
                 STATE_CASE_MODE: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, case_text_handler),
@@ -1067,6 +1082,7 @@ def main() -> None:
                     CallbackQueryHandler(action_button_callback, pattern="^action_"),
                     MessageHandler(filters.PHOTO & ~filters.UpdateType.EDITED_MESSAGE, image_handler),
                     MessageHandler(filters.Document.ALL & ~filters.UpdateType.EDITED_MESSAGE, document_warning_handler),
+                    # Slash commands
                     CommandHandler("caso", caso_command),
                     CommandHandler("publicar", publicar_command),
                     CommandHandler("preview", preview_command),
@@ -1075,26 +1091,40 @@ def main() -> None:
                     CommandHandler("editar_just", editar_just_command),
                     CommandHandler("editar_bib", editar_bib_command),
                     CommandHandler("cancelar", cancelar_command),
+                    # Keyboard button texts (without slash) - BEFORE generic text handler
+                    MessageHandler(_BTN_CASO, caso_command),
+                    MessageHandler(_BTN_PREVIEW, preview_command),
+                    MessageHandler(_BTN_PUBLICAR, publicar_command),
+                    MessageHandler(_BTN_CANCELAR, cancelar_command),
+                    MessageHandler(_BTN_EDITAR, editar_command),
+                    # Generic text handler (catch-all) - MUST be last
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, waiting_images_text_handler),
                 ],
                 STATE_EDIT_TIP: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_tip_handler),
                     CommandHandler("cancelar", cancelar_command),
+                    MessageHandler(_BTN_CANCELAR, cancelar_command),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_tip_handler),
                 ],
                 STATE_EDIT_JUSTIFICATION: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_just_handler),
                     CommandHandler("cancelar", cancelar_command),
+                    MessageHandler(_BTN_CANCELAR, cancelar_command),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_just_handler),
                 ],
                 STATE_EDIT_BIB: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_bib_handler),
                     CommandHandler("cancelar", cancelar_command),
+                    MessageHandler(_BTN_CANCELAR, cancelar_command),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_bib_handler),
                 ],
             },
-            fallbacks=[CommandHandler("cancelar", cancelar_command)],
+            fallbacks=[
+                CommandHandler("cancelar", cancelar_command),
+                MessageHandler(_BTN_CANCELAR, cancelar_command),
+            ],
             per_user=True,
         )
         app.add_handler(case_conv)
-        # Standalone fallback handlers for commands used outside conversation
+
+        # Standalone fallback handlers for commands/buttons used outside conversation
         async def fallback_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text("ℹ️ No hay caso pendiente para cancelar.")
 
@@ -1104,9 +1134,15 @@ def main() -> None:
         async def fallback_publicar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.message.reply_text("ℹ️ No hay caso pendiente. Usa /caso para empezar.")
 
+        # Slash command fallbacks
         app.add_handler(CommandHandler("cancelar", fallback_cancelar))
         app.add_handler(CommandHandler("preview", fallback_preview))
         app.add_handler(CommandHandler("publicar", fallback_publicar))
+        # Keyboard button text fallbacks (without slash)
+        app.add_handler(MessageHandler(_BTN_CANCELAR, fallback_cancelar))
+        app.add_handler(MessageHandler(_BTN_PREVIEW, fallback_preview))
+        app.add_handler(MessageHandler(_BTN_PUBLICAR, fallback_publicar))
+        app.add_handler(MessageHandler(filters.Regex(r"^(?i)admin$"), admin_command))
 
         # Handler for EDITED messages - re-parse the case when admin edits their message
         async def edited_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1172,11 +1208,40 @@ def main() -> None:
                         InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
                     ]
                 ]
-                await update.edited_message.reply_text(
+
+                new_text = (
                     f"🔄 Caso actualizado desde edición\n"
-                    f"{score_emoji} {passed}/{total} {score_bar}{preview_status}",
-                    reply_markup=InlineKeyboardMarkup(buttons),
+                    f"{score_emoji} {passed}/{total} {score_bar}{preview_status}"
                 )
+
+                # Try to EDIT the existing score message in-place (no new message)
+                score_msg_id = context.user_data.get("score_message_id")
+                score_chat_id = context.user_data.get("score_chat_id")
+                if score_msg_id and score_chat_id:
+                    try:
+                        await context.bot.edit_message_text(
+                            chat_id=score_chat_id,
+                            message_id=score_msg_id,
+                            text=new_text,
+                            reply_markup=InlineKeyboardMarkup(buttons),
+                        )
+                    except Exception as edit_err:
+                        # If edit fails (e.g., text identical), send new message as fallback
+                        logger.warning(f"Could not edit score message: {edit_err}")
+                        score_msg = await update.edited_message.reply_text(
+                            new_text,
+                            reply_markup=InlineKeyboardMarkup(buttons),
+                        )
+                        context.user_data["score_message_id"] = score_msg.message_id
+                else:
+                    # No existing score message, send new
+                    score_msg = await update.edited_message.reply_text(
+                        new_text,
+                        reply_markup=InlineKeyboardMarkup(buttons),
+                    )
+                    context.user_data["score_message_id"] = score_msg.message_id
+                    context.user_data["score_chat_id"] = update.edited_message.chat.id
+
                 # Reset published flag since case changed
                 context.user_data["published"] = False
 
