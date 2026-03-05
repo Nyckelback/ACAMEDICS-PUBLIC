@@ -16,6 +16,7 @@ import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardRemove
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     MessageHandler,
     ContextTypes,
@@ -58,17 +59,23 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     args = context.args
 
     if not args:
-        # Welcome message for new users
-        welcome_text = (
-            "👋 ¡Bienvenido al Bot de Casos Clínicos Médicos!\n\n"
-            "Este bot está diseñado para ayudarte a estudiar y practicar casos clínicos.\n\n"
-            "📚 Características:\n"
-            "• Acceso a justificaciones detalladas\n"
-            "• Mini App con explicaciones completas\n"
-            "• Casos organizados por especialidad\n\n"
-            "¿Cómo usar?\n"
-            "Haz clic en los botones 'VER JUSTIFICACIÓN' en el canal público."
-        )
+        # Welcome message - different for admin vs regular users
+        if _is_admin(user.id):
+            welcome_text = (
+                "🔧 Panel de Administrador\n\n"
+                "/caso - Crear caso clínico\n"
+                "/admin - Ver todos los comandos"
+            )
+        else:
+            welcome_text = (
+                "🎓 ¡Bienvenido a ACAMEDICS!\n\n"
+                "Somos la comunidad de casos clínicos que te prepara "
+                "para la residencia médica.\n\n"
+                "Cada día publicamos casos con justificaciones "
+                "detalladas, tips acamédicos y bibliografía actualizada.\n\n"
+                "👉 Únete al canal y haz clic en "
+                "'VER JUSTIFICACIÓN' después de responder cada caso."
+            )
         await update.message.reply_text(welcome_text)
         return
 
@@ -339,12 +346,20 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 
         # Action prompt
         if all_ok:
-            preview += "📸 Envía imágenes o /publicar para publicar"
+            preview += "📸 Fotos para agregar imágenes"
+            buttons = [
+                [
+                    InlineKeyboardButton("👁️ Preview", callback_data="action_preview"),
+                    InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
+                ]
+            ]
+            await update.message.reply_text(
+                preview, reply_markup=InlineKeyboardMarkup(buttons)
+            )
         else:
             missing = [name for name, ok in checks if not ok]
             preview += f"⚠️ Falta: {', '.join(missing)}\n📝 Envía el caso de nuevo con los campos faltantes"
-
-        await update.message.reply_text(preview)
+            await update.message.reply_text(preview)
         return STATE_WAITING_IMAGES
 
     except Exception as e:
@@ -435,7 +450,7 @@ async def edit_tip_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     context.user_data["pending_case"]["tip"] = update.message.text.strip()
     await update.message.reply_text(
         "✅ Tip actualizado.\n\n"
-        "📸 Envía imágenes o /publicar para publicar."
+        "📸 Fotos | /preview | /publicar."
     )
     return STATE_WAITING_IMAGES
 
@@ -459,7 +474,7 @@ async def edit_just_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data["pending_case"]["justification"] = update.message.text.strip()
     await update.message.reply_text(
         "✅ Justificación actualizada.\n\n"
-        "📸 Envía imágenes o /publicar para publicar."
+        "📸 Fotos | /preview | /publicar."
     )
     return STATE_WAITING_IMAGES
 
@@ -490,9 +505,212 @@ async def edit_bib_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     context.user_data["pending_case"]["bibliography"] = [r for r in cleaned if r]
     await update.message.reply_text(
         f"✅ Bibliografía actualizada ({len(cleaned)} refs).\n\n"
-        "📸 Envía imágenes o /publicar para publicar."
+        "📸 Fotos | /preview | /publicar."
     )
     return STATE_WAITING_IMAGES
+
+
+async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle inline button callbacks for Preview and Publicar."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "action_preview":
+        # Simulate /preview command
+        # We need to create a fake update-like call, but simpler: just call the logic
+        return await _do_preview(query, context)
+    elif query.data == "action_publicar":
+        return await _do_publicar(query, context)
+
+    return STATE_WAITING_IMAGES
+
+
+async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Preview logic shared by /preview command and inline button."""
+    pending_case = context.user_data.get("pending_case")
+    if not pending_case:
+        await query.message.reply_text("❌ No hay caso pendiente. Envía un caso primero con /caso")
+        return STATE_CASE_MODE
+
+    try:
+        miniapp_short_name = os.getenv("MINIAPP_SHORT_NAME", "justificacion")
+
+        # Save case to Supabase (unpublished) for preview
+        preview_uuid = context.user_data.get("preview_uuid")
+        if preview_uuid:
+            supabase.update_case(preview_uuid, pending_case)
+        else:
+            preview_uuid = supabase.save_case(pending_case)
+            context.user_data["preview_uuid"] = preview_uuid
+
+        if not preview_uuid:
+            await query.message.reply_text("❌ Error al guardar preview.")
+            return STATE_WAITING_IMAGES
+
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="👁️ VER PREVIEW",
+                        url=f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={preview_uuid}",
+                    )
+                ]
+            ]
+        )
+
+        await query.message.reply_text(
+            "🔍 Preview guardado. Ábrelo aquí:\n\n"
+            "Cuando estés listo: /publicar\n"
+            "Para actualizar: /preview",
+            reply_markup=keyboard,
+        )
+        return STATE_WAITING_IMAGES
+    except Exception as e:
+        logger.error(f"Error creating preview from button: {e}")
+        await query.message.reply_text(f"❌ Error: {str(e)}")
+        return STATE_WAITING_IMAGES
+
+
+async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Publicar logic called from inline button."""
+    user_id = query.from_user.id if query.from_user else None
+    if not _is_admin(user_id):
+        await query.message.reply_text("❌ Solo administradores pueden publicar casos.")
+        return ConversationHandler.END
+
+    try:
+        pending_case = context.user_data.get("pending_case")
+        if not pending_case:
+            await query.message.reply_text("❌ No hay un caso en preparación.")
+            return ConversationHandler.END
+
+        case_number = supabase.get_next_case_number()
+        case_uuid = context.user_data.get("preview_uuid")
+        if case_uuid:
+            supabase.update_case(case_uuid, pending_case)
+        else:
+            case_uuid = supabase.save_case(pending_case)
+        if not case_uuid:
+            await query.message.reply_text("❌ Error al guardar el caso en la base de datos.")
+            return ConversationHandler.END
+
+        vignette = pending_case["vignette"]
+        options = pending_case["options"]
+        poll_question = vignette
+        if len(vignette) > 290:
+            await context.bot.send_message(
+                chat_id=Config.PUBLIC_CHANNEL_ID,
+                text=vignette,
+            )
+            poll_question = "¿Cuál es la respuesta correcta?"
+
+        option_texts = []
+        for opt in options:
+            full = f"{opt['letter']}. {opt['text']}"
+            if len(full) > 100:
+                full = full[:97] + "..."
+            option_texts.append(full)
+
+        correct_letter = pending_case["correct_letter"]
+        correct_index = next(
+            (i for i, opt in enumerate(options) if opt["letter"] == correct_letter),
+            0,
+        )
+
+        explanation = pending_case["justification"][:200]
+        miniapp_short_name = Config.MINIAPP_SHORT_NAME
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="VER JUSTIFICACIÓN 💬",
+                        url=f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={case_uuid}",
+                    )
+                ]
+            ]
+        )
+
+        poll_msg = await context.bot.send_poll(
+            chat_id=Config.PUBLIC_CHANNEL_ID,
+            question=poll_question,
+            options=option_texts,
+            type="quiz",
+            correct_option_id=correct_index,
+            explanation=explanation,
+            is_anonymous=True,
+            reply_markup=keyboard,
+        )
+
+        logger.info(f"Poll published for case {case_uuid}: {poll_msg.message_id}")
+        supabase.update_case(
+            case_uuid,
+            {"telegram_message_id": poll_msg.message_id, "published": True},
+        )
+
+        await query.message.reply_text(
+            f"✅ Caso #{case_number} publicado en el canal.\n"
+            f"UUID: `{case_uuid}`",
+            parse_mode="Markdown",
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error publishing case from button: {e}")
+        await query.message.reply_text(f"❌ Error al publicar: {str(e)}")
+        return STATE_WAITING_IMAGES
+
+
+async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /preview command - save case to DB and show Mini App preview."""
+    if not _is_admin(update.effective_user.id):
+        return STATE_WAITING_IMAGES
+
+    try:
+        pending_case = context.user_data.get("pending_case")
+        if not pending_case:
+            await update.message.reply_text("❌ No hay caso en preparación.")
+            return STATE_WAITING_IMAGES
+
+        # Save case to Supabase (unpublished) for preview
+        preview_uuid = context.user_data.get("preview_uuid")
+        if preview_uuid:
+            # Update existing preview
+            supabase.update_case(preview_uuid, pending_case)
+        else:
+            # Save new preview
+            preview_uuid = supabase.save_case(pending_case)
+            context.user_data["preview_uuid"] = preview_uuid
+
+        if not preview_uuid:
+            await update.message.reply_text("❌ Error al guardar preview.")
+            return STATE_WAITING_IMAGES
+
+        # Send Mini App preview button
+        miniapp_short_name = Config.MINIAPP_SHORT_NAME
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="👁️ VER PREVIEW",
+                        url=f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={preview_uuid}",
+                    )
+                ]
+            ]
+        )
+
+        await update.message.reply_text(
+            "👁️ Preview guardado. Abre la Mini App para ver cómo queda:\n\n"
+            "Cuando estés listo: /publicar\n"
+            "Para editar: /editar",
+            reply_markup=keyboard,
+        )
+        return STATE_WAITING_IMAGES
+
+    except Exception as e:
+        logger.error(f"Error creating preview: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+        return STATE_WAITING_IMAGES
 
 
 async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -510,8 +728,14 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         # Get case number BEFORE saving (so count is accurate)
         case_number = supabase.get_next_case_number()
 
-        # Save case to Supabase
-        case_uuid = supabase.save_case(pending_case)
+        # Reuse preview UUID if it exists, otherwise save new
+        case_uuid = context.user_data.get("preview_uuid")
+        if case_uuid:
+            # Update existing preview case with latest data
+            supabase.update_case(case_uuid, pending_case)
+        else:
+            # Save new case to Supabase
+            case_uuid = supabase.save_case(pending_case)
         if not case_uuid:
             await update.message.reply_text("❌ Error al guardar el caso en la base de datos.")
             return ConversationHandler.END
@@ -617,17 +841,17 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     admin_text = (
         "🔧 **Comandos de Administrador:**\n\n"
-        "/caso - Iniciar creación de caso clínico\n"
-        "/publicar - Publicar caso en el canal\n"
-        "/cancelar - Cancelar operación en curso\n"
-        "/editar - Ver opciones de edición\n"
-        "/editar\\_tip - Editar el tip\n"
-        "/editar\\_just - Editar la justificación\n"
-        "/editar\\_bib - Editar la bibliografía\n"
+        "/caso - Crear caso clínico\n"
+        "/preview - Ver cómo queda en la Mini App\n"
+        "/publicar - Publicar en el canal\n"
+        "/editar - Editar secciones del caso\n"
+        "/cancelar - Cancelar\n"
         "/admin - Ver este menú\n\n"
         "**Flujo:**\n"
-        "1. /caso → Envía el caso → (Fotos) → /publicar\n"
-        "2. Antes de /publicar puedes usar /editar\n"
+        "1. /caso → Pega el caso completo\n"
+        "2. (Opcional) Envía fotos\n"
+        "3. /preview → Revisa en la Mini App\n"
+        "4. /publicar → Se envía al canal\n"
     )
     await update.message.reply_text(admin_text, parse_mode="Markdown")
 
@@ -690,9 +914,11 @@ def main() -> None:
                     MessageHandler(filters.TEXT & ~filters.COMMAND, case_text_handler),
                 ],
                 STATE_WAITING_IMAGES: [
+                    CallbackQueryHandler(action_button_callback, pattern="^action_"),
                     MessageHandler(filters.PHOTO, image_handler),
                     MessageHandler(filters.Document.ALL, document_warning_handler),
                     CommandHandler("publicar", publicar_command),
+                    CommandHandler("preview", preview_command),
                     CommandHandler("editar", editar_command),
                     CommandHandler("editar_tip", editar_tip_command),
                     CommandHandler("editar_just", editar_just_command),
