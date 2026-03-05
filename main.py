@@ -553,18 +553,27 @@ async def edit_bib_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle inline button callbacks for Preview and Publicar."""
+    """Handle inline button callbacks for Preview and Publicar.
+    Uses query.answer() for toast notifications (top bar) instead of messages."""
     query = update.callback_query
 
     if query.data == "action_preview":
+        pending_case = context.user_data.get("pending_case")
+        if not pending_case:
+            await query.answer("❌ No hay caso pendiente", show_alert=True)
+            return STATE_WAITING_IMAGES
         await query.answer("⏳ Generando preview...")
         return await _do_preview(query, context)
+
     elif query.data == "action_publicar":
-        # Double-publish protection
         if context.user_data.get("published"):
-            await query.answer("✅ Este caso ya fue publicado", show_alert=True)
+            await query.answer("✅ Ya fue publicado. Usa /caso para otro", show_alert=True)
             return ConversationHandler.END
-        await query.answer("⏳ Publicando...")
+        pending_case = context.user_data.get("pending_case")
+        if not pending_case:
+            await query.answer("❌ No hay caso pendiente", show_alert=True)
+            return ConversationHandler.END
+        await query.answer("⏳ Publicando en el canal...")
         return await _do_publicar(query, context)
 
     await query.answer()
@@ -574,9 +583,6 @@ async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_T
 async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Preview logic called from inline button. Edits the original message in-place."""
     pending_case = context.user_data.get("pending_case")
-    if not pending_case:
-        await query.message.reply_text("❌ No hay caso pendiente. Envía un caso primero con /caso")
-        return STATE_CASE_MODE
 
     try:
         miniapp_short_name = os.getenv("MINIAPP_SHORT_NAME", "justificacion")
@@ -590,10 +596,9 @@ async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             context.user_data["preview_uuid"] = preview_uuid
 
         if not preview_uuid:
-            await query.message.reply_text("❌ Error al guardar preview.")
             return STATE_WAITING_IMAGES
 
-        # Edit the SAME message: replace Preview/Publicar buttons with VER PREVIEW link
+        # Edit the SAME message buttons only - no new message
         preview_url = f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={preview_uuid}"
         new_keyboard = InlineKeyboardMarkup(
             [
@@ -605,38 +610,28 @@ async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
                 ],
                 [
                     InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
-                    InlineKeyboardButton("🔄 Actualizar Preview", callback_data="action_preview"),
+                    InlineKeyboardButton("🔄 Actualizar", callback_data="action_preview"),
                 ],
             ]
         )
 
-        # Edit the original message to show preview link in the same message
-        await query.edit_message_reply_markup(reply_markup=new_keyboard)
+        try:
+            await query.edit_message_reply_markup(reply_markup=new_keyboard)
+        except Exception as edit_err:
+            logger.warning(f"Could not edit message buttons: {edit_err}")
         return STATE_WAITING_IMAGES
     except Exception as e:
         logger.error(f"Error creating preview from button: {e}")
-        await query.message.reply_text(f"❌ Error: {str(e)}")
         return STATE_WAITING_IMAGES
 
 
 async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Publicar logic called from inline button. Edits message in-place."""
-    user_id = query.from_user.id if query.from_user else None
-    if not _is_admin(user_id):
-        await query.message.reply_text("❌ Solo administradores pueden publicar casos.")
-        return ConversationHandler.END
-
-    # Double-publish protection
-    if context.user_data.get("published"):
-        await query.message.reply_text("✅ Este caso ya fue publicado.")
-        return ConversationHandler.END
+    # Mark as published IMMEDIATELY to prevent double-click
+    context.user_data["published"] = True
 
     try:
         pending_case = context.user_data.get("pending_case")
-        if not pending_case:
-            await query.message.reply_text("❌ No hay un caso en preparación.")
-            return ConversationHandler.END
-
         case_number = supabase.get_next_case_number()
         case_uuid = context.user_data.get("preview_uuid")
         if case_uuid:
@@ -644,11 +639,8 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
         else:
             case_uuid = supabase.save_case(pending_case)
         if not case_uuid:
-            await query.message.reply_text("❌ Error al guardar el caso en la base de datos.")
-            return ConversationHandler.END
-
-        # Mark as published IMMEDIATELY to prevent double-click race condition
-        context.user_data["published"] = True
+            context.user_data["published"] = False
+            return STATE_WAITING_IMAGES
 
         vignette = pending_case["vignette"]
         options = pending_case["options"]
@@ -673,7 +665,9 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             0,
         )
 
-        explanation = pending_case["justification"][:200]
+        # Use TIP for quiz explanation tooltip (lightbulb icon), fallback to justification
+        tip_text = pending_case.get("tip", "")
+        explanation = f"💡 {tip_text[:195]}" if tip_text else pending_case["justification"][:200]
         miniapp_short_name = Config.MINIAPP_SHORT_NAME
         keyboard = InlineKeyboardMarkup(
             [
@@ -706,23 +700,17 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
         # Edit the original message to show confirmation (no new message)
         try:
             await query.edit_message_text(
-                f"✅ Caso #{case_number} publicado en el canal.\n"
-                f"UUID: {case_uuid}",
+                f"✅ Caso #{case_number} publicado exitosamente.",
             )
         except Exception:
-            # Fallback if edit fails
-            await query.message.reply_text(
-                f"✅ Caso #{case_number} publicado en el canal.\n"
-                f"UUID: `{case_uuid}`",
-                parse_mode="Markdown",
-            )
+            pass
 
         context.user_data.clear()
         return ConversationHandler.END
 
     except Exception as e:
         logger.error(f"Error publishing case from button: {e}")
-        await query.message.reply_text(f"❌ Error al publicar: {str(e)}")
+        context.user_data["published"] = False
         return STATE_WAITING_IMAGES
 
 
@@ -843,8 +831,9 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             0,
         )
 
-        # Prepare explanation (first 200 chars)
-        explanation = pending_case["justification"][:200]
+        # Use TIP for quiz explanation tooltip (lightbulb icon), fallback to justification
+        tip_text = pending_case.get("tip", "")
+        explanation = f"💡 {tip_text[:195]}" if tip_text else pending_case["justification"][:200]
 
         # Prepare Mini App button (attached directly to the poll)
         miniapp_short_name = Config.MINIAPP_SHORT_NAME
@@ -901,8 +890,14 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle /cancelar command - cancel case creation and clean up preview."""
-    # Delete orphan preview from Supabase if it exists
     preview_uuid = context.user_data.get("preview_uuid")
+    pending = context.user_data.get("pending_case")
+
+    if not pending and not preview_uuid:
+        await update.message.reply_text("ℹ️ No hay caso pendiente para cancelar.")
+        return ConversationHandler.END
+
+    # Delete orphan preview from Supabase if it exists
     if preview_uuid:
         try:
             supabase.delete_case(preview_uuid)
@@ -910,7 +905,7 @@ async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         except Exception as e:
             logger.warning(f"Could not delete preview {preview_uuid}: {e}")
     context.user_data.clear()
-    await update.message.reply_text("🗑️ Cancelado")
+    await update.message.reply_text("🗑️ Caso cancelado y eliminado.")
     return ConversationHandler.END
 
 
@@ -1025,6 +1020,19 @@ def main() -> None:
             per_user=True,
         )
         app.add_handler(case_conv)
+        # Standalone fallback handlers for commands used outside conversation
+        async def fallback_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+            await update.message.reply_text("ℹ️ No hay caso pendiente para cancelar.")
+
+        async def fallback_preview(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+            await update.message.reply_text("ℹ️ No hay caso pendiente. Usa /caso para empezar.")
+
+        async def fallback_publicar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+            await update.message.reply_text("ℹ️ No hay caso pendiente. Usa /caso para empezar.")
+
+        app.add_handler(CommandHandler("cancelar", fallback_cancelar))
+        app.add_handler(CommandHandler("preview", fallback_preview))
+        app.add_handler(CommandHandler("publicar", fallback_publicar))
 
         # Error handler
         app.add_error_handler(error_handler)
