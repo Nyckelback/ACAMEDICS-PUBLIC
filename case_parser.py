@@ -144,11 +144,47 @@ _END_OPTIONS_KEYWORDS = (
 )
 
 
+def _fix_telegram_emojis(text: str) -> str:
+    """
+    Fix Telegram auto-emoji conversions that break option parsing.
+    Telegram converts certain text sequences to emojis:
+      B) → 😎 (sunglasses)  D) → 😄 or 😃  :) → various smileys
+    This function detects these at line start and converts them back.
+    """
+    # Map of emojis that Telegram creates from option-like text
+    emoji_to_option = {
+        "😎": "B) ",   # B) → sunglasses
+        "😄": "D) ",   # D) → grinning face
+        "😃": "D) ",   # D) → smiley
+        "😀": "D) ",   # D) → grinning
+        "😁": "D) ",   # D) variant
+    }
+    lines = text.split("\n")
+    fixed = []
+    for line in lines:
+        stripped = line.strip()
+        replaced = False
+        for emoji, replacement in emoji_to_option.items():
+            if stripped.startswith(emoji):
+                # Only replace if it looks like an option line (has text after emoji)
+                rest = stripped[len(emoji):].strip()
+                if rest:
+                    fixed.append(replacement + rest)
+                    replaced = True
+                    break
+        if not replaced:
+            fixed.append(line)
+    return "\n".join(fixed)
+
+
 def parse_case(text: str) -> ParsedCase:
     """
     Parse a medical clinical case from raw text.
     Handles many format variations for each section header.
     """
+    # Pre-process: fix Telegram emoji conversions
+    text = _fix_telegram_emojis(text)
+
     errors = []
     vignette = ""
     options = []
@@ -746,4 +782,33 @@ La opcion 1 es la adecuada para este caso clinico."""
     assert p.correct_letter == "A", f"Test 20 FAIL: got {p.correct_letter}"
     print("Test 20 PASS: RPTA CORRECTA")
 
-    print("\n=== ALL 20 TESTS PASSED ===")
+    # ── Test 21: Telegram emoji B) → 😎 ──
+    test21 = """Lactante de 5 meses con desnutricion.
+A) Hospitalizar inmediatamente
+😎 Dar consejeria nutricional y citar en 14 dias
+C) Iniciar F-75 ambulatoria
+D) Remitir a urgencias
+CORRECTA: A
+Justificacion completa del caso de desnutricion aguda."""
+    p = parse_case(test21)
+    assert p.parsed_ok, f"Test 21 FAIL: {p.errors}"
+    assert len(p.options) == 4, f"Test 21 FAIL: got {len(p.options)} options: {[o['letter'] for o in p.options]}"
+    assert p.options[1]["letter"] == "B", f"Test 21 FAIL: second option is {p.options[1]['letter']}"
+    assert p.correct_letter == "A"
+    print("Test 21 PASS: Telegram emoji 😎 → B)")
+
+    # ── Test 22: Telegram emoji D) → 😄 ──
+    test22 = """Caso clinico.
+A. Opcion A
+B. Opcion B
+C. Opcion C
+😄 Opcion D
+CORRECTA: D
+La opcion D es correcta por razones clinicas."""
+    p = parse_case(test22)
+    assert p.parsed_ok, f"Test 22 FAIL: {p.errors}"
+    assert len(p.options) == 4, f"Test 22 FAIL: got {len(p.options)} options"
+    assert p.options[3]["letter"] == "D", f"Test 22 FAIL: fourth option is {p.options[3]['letter']}"
+    print("Test 22 PASS: Telegram emoji 😄 → D)")
+
+    print("\n=== ALL 22 TESTS PASSED ===")
