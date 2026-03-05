@@ -31,6 +31,7 @@ class Config:
 
     # Mini App Configuration
     MINIAPP_URL = os.getenv("MINIAPP_URL", "")
+    MINIAPP_SHORT_NAME = os.getenv("MINIAPP_SHORT_NAME", "justificacion")
 
     # Legacy Configuration
     JUSTIFICATIONS_CHAT_ID = int(os.getenv("JUSTIFICATIONS_CHAT_ID", "-1003058530208"))
