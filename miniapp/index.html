@@ -107,8 +107,18 @@
         .footer-item svg { width: 18px; height: 18px; flex-shrink: 0; }
         .bottom-accent { position: fixed; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--navy), var(--teal), var(--teal-light)); z-index: 50; }
         .constellation { position: absolute; pointer-events: none; z-index: 0; }
-        .case-images { margin: 16px 0; }
-        .case-images img { width: 100%; border-radius: 10px; margin-bottom: 12px; -webkit-user-drag: none; pointer-events: none; box-shadow: var(--shadow-soft); }
+        .img-accordion { margin: 24px 0 20px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: box-shadow 0.3s; box-shadow: var(--shadow-card); }
+        .img-accordion .bib-toggle { background: linear-gradient(135deg, rgba(24,130,140,0.04), rgba(107,76,127,0.03)); }
+        .img-accordion.open .bib-chevron { transform: rotate(180deg); }
+        .img-accordion .img-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.4s ease; padding: 0 14px; }
+        .img-accordion.open .img-content { max-height: 3000px; padding: 14px; }
+        .img-accordion .img-content img { width: 100%; border-radius: 10px; margin-bottom: 12px; box-shadow: var(--shadow-soft); cursor: pointer; -webkit-user-drag: none; transition: transform 0.2s; }
+        .img-accordion .img-content img:active { transform: scale(0.98); }
+        .lightbox { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 1000; align-items: center; justify-content: center; flex-direction: column; padding: 20px; }
+        .lightbox.active { display: flex; }
+        .lightbox img { max-width: 100%; max-height: 85vh; border-radius: 8px; object-fit: contain; }
+        .lightbox-close { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+        .lightbox-hint { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 12px; }
         @media (max-width: 480px) {
             .app-container { padding: 0 18px; } .header-brand { font-size: 22px; }
             .section-title { font-size: 20px; } .answer-text { font-size: 15px; }
@@ -214,16 +224,37 @@
             h += '<div class="section-title">Análisis y Fundamentación del Caso Clínico</div>';
             if (d.justification) {
                 h += '<div class="justification-wrap"><div class="justification" id="justText">';
-                // Split paragraphs: double newline OR single newline both create paragraphs
-                // First check if text has double newlines (structured text)
-                const hasDoubleNL = /\n\s*\n/.test(d.justification);
+                // Pre-process: join lines that start with "option letter)" pattern
+                // when preceded by text like "(opción" - these are NOT real options,
+                // just references to options within justification text
+                let justText = d.justification;
+                // --- Fix option-letter references in justification text ---
+                // The justification text often references options like "opción C)",
+                // "(C)", "opción D.", "la B)", "respuesta C)" etc.
+                // When these get split across lines, they create false bullet points.
+
+                // Rule 1: merge lines where prev line ends with context word + letter ref on next line
+                // Covers: "opción\nC) es...", "(opción \nD) es...", "(\nC) es..."
+                // Also: "la\nC)", "respuesta\nB)", etc.
+                justText = justText.replace(/((?:opci[oó]n|respuesta|alternativa|inciso|literal|la|el|\()\s*)\n\s*([A-Fa-f][.),:]\s*)/gi, '$1$2');
+
+                // Rule 2: Any line starting with a SINGLE letter + ) or . followed by LOWERCASE
+                // is a continuation, not a real option
+                // "C) es el tratamiento" = continuation (lowercase after)
+                // "C) Fórmula Terapéutica" = real option (uppercase after - won't match)
+                justText = justText.replace(/\n\s*([A-Fa-f][.)]\s+[a-záéíóúñ])/g, ' $1');
+
+                // Rule 3: Lines that are ONLY a letter reference like "C)" or "(C)" with no text
+                // merge with next line
+                justText = justText.replace(/\n\s*(\(?[A-Fa-f][.)]\)?)\s*\n/g, ' $1 ');
+
+                // Split paragraphs: double newline OR single newline
+                const hasDoubleNL = /\n\s*\n/.test(justText);
                 let paras;
                 if (hasDoubleNL) {
-                    // Structured text: double newline = paragraph break
-                    paras = d.justification.split(/\n\s*\n/).filter(p=>p.trim());
+                    paras = justText.split(/\n\s*\n/).filter(p=>p.trim());
                 } else {
-                    // Single newlines only: each newline = paragraph break
-                    paras = d.justification.split(/\n/).filter(p=>p.trim());
+                    paras = justText.split(/\n/).filter(p=>p.trim());
                 }
                 paras.forEach(p => {
                     const merged = p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
@@ -237,7 +268,13 @@
                 h += '<div class="tip-content-box"><div class="tip-text">'+esc(d.tip)+'</div></div></div>';
             }
             const caseImages = Array.isArray(d.images) ? d.images : [];
-            if (caseImages.length) { h += '<div class="case-images">'; caseImages.forEach(url => { if(url && typeof url === 'string') h += '<img src="'+esc(url)+'" alt="Imagen" loading="lazy">'; }); h += '</div>'; }
+            if (caseImages.length) {
+                h += '<div class="img-accordion open" id="imgAccordion">';
+                h += '<button class="bib-toggle" id="imgToggle"><div class="bib-toggle-left"><div class="bib-toggle-dot" style="background:var(--purple)"></div><span class="bib-toggle-text">Recurso Adicional</span><span class="bib-toggle-count">'+caseImages.length+'</span></div><svg class="bib-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>';
+                h += '<div class="img-content">';
+                caseImages.forEach((url,i) => { if(url && typeof url === 'string') h += '<img src="'+esc(url)+'" alt="Recurso '+(i+1)+'" loading="lazy" data-full="'+esc(url)+'">'; });
+                h += '</div></div>';
+            }
             const bibRefs = parseBibliography(d.bibliography);
             if (bibRefs.length > 0) {
                 h += '<div class="bib-accordion" id="bibAccordion"><button class="bib-toggle" id="bibToggle"><div class="bib-toggle-left"><div class="bib-toggle-dot"></div><span class="bib-toggle-text">Referencias Bibliográficas</span><span class="bib-toggle-count">'+bibRefs.length+'</span></div><svg class="bib-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="bib-content"><div class="bib-grid">';
@@ -246,9 +283,28 @@
             }
             h += '<div class="footer"><div class="footer-social"><a href="#" class="footer-item"><svg viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" stroke="#18828c" stroke-width="1.5"/><circle cx="12" cy="12" r="4.5" stroke="#18828c" stroke-width="1.5"/><circle cx="17.5" cy="6.5" r="1.2" fill="#18828c"/></svg>@acamedics.co</a>';
             h += '<a href="#" class="footer-item"><svg viewBox="0 0 24 24" fill="none"><path d="M21.2 4.3L2.4 10.5c-.6.2-.6 1.1 0 1.3l4.5 1.7 1.7 5.5c.2.5.8.7 1.2.4l2.5-2 4.3 3.2c.5.4 1.2.1 1.3-.5L21.8 5.2c.2-.7-.3-1.2-.6-.9z" stroke="#18828c" stroke-width="1.3" stroke-linejoin="round"/><path d="M8.9 13.5l9.3-7.2" stroke="#18828c" stroke-width="1" opacity="0.5"/></svg>acamedics_co</a></div></div>';
+            // Lightbox for full-screen image viewing
+            h += '<div class="lightbox" id="lightbox"><button class="lightbox-close" id="lightboxClose">&times;</button><img id="lightboxImg" src="" alt=""><div class="lightbox-hint">Toca para cerrar</div></div>';
             contentDiv.innerHTML = h;
+            // Bibliography accordion
             const bt = document.getElementById('bibToggle');
             if (bt) bt.addEventListener('click', () => document.getElementById('bibAccordion').classList.toggle('open'));
+            // Images accordion
+            const it = document.getElementById('imgToggle');
+            if (it) it.addEventListener('click', () => document.getElementById('imgAccordion').classList.toggle('open'));
+            // Lightbox: click image to open full screen
+            const lb = document.getElementById('lightbox');
+            const lbImg = document.getElementById('lightboxImg');
+            document.querySelectorAll('.img-content img').forEach(img => {
+                img.addEventListener('click', e => {
+                    lbImg.src = img.getAttribute('data-full') || img.src;
+                    lb.classList.add('active');
+                });
+            });
+            // Close lightbox
+            const closeLb = () => lb.classList.remove('active');
+            document.getElementById('lightboxClose').addEventListener('click', closeLb);
+            lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.contains('lightbox-hint')) closeLb(); });
             const sizes = [0, 2, 4];
             let sizeIdx = 0;
             function applySize() {
