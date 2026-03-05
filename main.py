@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 # State constants
 STATE_CASE_MODE = 1
 STATE_WAITING_IMAGES = 2
+STATE_EDIT_TIP = 3
+STATE_EDIT_JUSTIFICATION = 4
+STATE_EDIT_BIB = 5
 
 # Supabase client
 supabase = None
@@ -277,17 +280,70 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         context.user_data["pending_case"] = parsed.to_dict()
         context.user_data["pending_case"]["images"] = []
 
-        # Show preview
+        # Show preview with visual score
+        checks = []
+        checks.append(("Viñeta", bool(parsed.vignette)))
+        checks.append(("Opciones", len(parsed.options) >= 2))
+        checks.append(("Correcta", bool(parsed.correct_letter)))
+        checks.append(("Justificación", bool(parsed.justification)))
+        checks.append(("Tip", bool(parsed.tip)))
+        checks.append(("Bibliografía", len(parsed.bibliography) > 0))
+
+        passed = sum(1 for _, ok in checks if ok)
+        total = len(checks)
+        all_ok = passed == total
+
+        # Score bar
+        score_emoji = "✅" if all_ok else "⚠️"
+        score_bar = "".join("🟢" if ok else "🔴" for _, ok in checks)
+        header = f"{score_emoji} {passed}/{total} {score_bar}"
+        if all_ok:
+            header += "\nCASO LISTO PARA PUBLICAR"
+        else:
+            header += "\nFALTAN CAMPOS"
+
+        # Sections
+        vig_preview = parsed.vignette[:90].replace('\n', ' ')
+        vig_line = f"{'✅' if parsed.vignette else '❌'} Viñeta: {vig_preview}{'...' if len(parsed.vignette) > 90 else ''}"
+
+        opt_letters = ', '.join(opt['letter'] for opt in parsed.options)
+        opt_line = f"{'✅' if len(parsed.options) >= 2 else '❌'} Opciones ({len(parsed.options)}): {opt_letters}"
+
+        # Show correct answer with its text
+        correct_text = ""
+        for opt in parsed.options:
+            if opt["letter"] == parsed.correct_letter:
+                correct_text = opt["text"][:50]
+                break
+        cor_line = f"{'✅' if parsed.correct_letter else '❌'} Correcta: {parsed.correct_letter}" + (f" - {correct_text}..." if correct_text else "")
+
+        just_preview = parsed.justification[:80].replace('\n', ' ') if parsed.justification else "(vacío)"
+        just_line = f"{'✅' if parsed.justification else '❌'} Justificación: {just_preview}{'...' if len(parsed.justification) > 80 else ''}"
+
+        tip_preview = parsed.tip[:70].replace('\n', ' ') if parsed.tip else "(vacío)"
+        tip_line = f"{'✅' if parsed.tip else '⚪'} Tip: {tip_preview}{'...' if parsed.tip and len(parsed.tip) > 70 else ''}"
+
+        bib_line = f"{'✅' if parsed.bibliography else '⚪'} Bibliografía: {len(parsed.bibliography)} refs"
+
         preview = (
-            f"✅ CASO PARSEADO CORRECTAMENTE\n\n"
-            f"📋 Viñeta: {parsed.vignette[:100]}{'...' if len(parsed.vignette) > 100 else ''}\n"
-            f"📊 Opciones: {', '.join(opt['letter'] for opt in parsed.options)}\n"
-            f"✅ Correcta: {parsed.correct_letter}\n"
-            f"📝 Justificación: {parsed.justification[:100]}{'...' if len(parsed.justification) > 100 else ''}\n"
-            f"💡 Tip: {parsed.tip[:80] if parsed.tip else '(vacío)'}{'...' if len(parsed.tip) > 80 else ''}\n"
-            f"📚 Bibliografía: {len(parsed.bibliography)} referencias\n\n"
-            f"Envía imágenes si quieres agregar, o /publicar para enviar al canal."
+            f"{header}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"{vig_line}\n\n"
+            f"{opt_line}\n\n"
+            f"{cor_line}\n\n"
+            f"{just_line}\n\n"
+            f"{tip_line}\n\n"
+            f"{bib_line}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
         )
+
+        # Action prompt
+        if all_ok:
+            preview += "📸 Envía imágenes o /publicar para publicar"
+        else:
+            missing = [name for name, ok in checks if not ok]
+            preview += f"⚠️ Falta: {', '.join(missing)}\n📝 Envía el caso de nuevo con los campos faltantes"
+
         await update.message.reply_text(preview)
         return STATE_WAITING_IMAGES
 
@@ -340,6 +396,101 @@ async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT
     await update.message.reply_text(
         "⚠️ Enviaste un archivo/documento. Para agregar imágenes, envíalas como FOTO (no como archivo).\n"
         "Envía fotos o /publicar para continuar."
+    )
+    return STATE_WAITING_IMAGES
+
+
+async def editar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Show edit menu for pending case."""
+    pending = context.user_data.get("pending_case")
+    if not pending:
+        await update.message.reply_text("❌ No hay caso en preparación.")
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "✏️ ¿Qué quieres editar?\n\n"
+        "/editar_tip - Cambiar el tip\n"
+        "/editar_just - Cambiar la justificación\n"
+        "/editar_bib - Cambiar la bibliografía\n\n"
+        "O envía /publicar para publicar tal cual."
+    )
+    return STATE_WAITING_IMAGES
+
+
+async def editar_tip_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start editing tip."""
+    pending = context.user_data.get("pending_case")
+    if not pending:
+        await update.message.reply_text("❌ No hay caso en preparación.")
+        return ConversationHandler.END
+    current = pending.get("tip", "(vacío)")
+    await update.message.reply_text(
+        f"💡 Tip actual:\n{current[:200]}{'...' if len(current) > 200 else ''}\n\n"
+        "📝 Envía el nuevo tip:"
+    )
+    return STATE_EDIT_TIP
+
+
+async def edit_tip_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive new tip text."""
+    context.user_data["pending_case"]["tip"] = update.message.text.strip()
+    await update.message.reply_text(
+        "✅ Tip actualizado.\n\n"
+        "📸 Envía imágenes o /publicar para publicar."
+    )
+    return STATE_WAITING_IMAGES
+
+
+async def editar_just_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start editing justification."""
+    pending = context.user_data.get("pending_case")
+    if not pending:
+        await update.message.reply_text("❌ No hay caso en preparación.")
+        return ConversationHandler.END
+    current = pending.get("justification", "(vacío)")
+    await update.message.reply_text(
+        f"📝 Justificación actual:\n{current[:300]}{'...' if len(current) > 300 else ''}\n\n"
+        "📝 Envía la nueva justificación:"
+    )
+    return STATE_EDIT_JUSTIFICATION
+
+
+async def edit_just_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive new justification text."""
+    context.user_data["pending_case"]["justification"] = update.message.text.strip()
+    await update.message.reply_text(
+        "✅ Justificación actualizada.\n\n"
+        "📸 Envía imágenes o /publicar para publicar."
+    )
+    return STATE_WAITING_IMAGES
+
+
+async def editar_bib_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start editing bibliography."""
+    pending = context.user_data.get("pending_case")
+    if not pending:
+        await update.message.reply_text("❌ No hay caso en preparación.")
+        return ConversationHandler.END
+    current_refs = pending.get("bibliography", [])
+    bib_text = "\n".join(f"• {r}" for r in current_refs) if current_refs else "(vacío)"
+    await update.message.reply_text(
+        f"📚 Bibliografía actual:\n{bib_text[:400]}\n\n"
+        "📝 Envía la nueva bibliografía (una referencia por línea):"
+    )
+    return STATE_EDIT_BIB
+
+
+async def edit_bib_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive new bibliography text."""
+    lines = [l.strip() for l in update.message.text.strip().split("\n") if l.strip()]
+    # Clean prefixes like "- ", "* ", "1. " etc.
+    import re as _re
+    cleaned = []
+    for line in lines:
+        cleaned.append(_re.sub(r"^[\d]+[.)]\s*|^[-*•]\s*", "", line).strip())
+    context.user_data["pending_case"]["bibliography"] = [r for r in cleaned if r]
+    await update.message.reply_text(
+        f"✅ Bibliografía actualizada ({len(cleaned)} refs).\n\n"
+        "📸 Envía imágenes o /publicar para publicar."
     )
     return STATE_WAITING_IMAGES
 
@@ -467,13 +618,16 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     admin_text = (
         "🔧 **Comandos de Administrador:**\n\n"
         "/caso - Iniciar creación de caso clínico\n"
+        "/publicar - Publicar caso en el canal\n"
         "/cancelar - Cancelar operación en curso\n"
+        "/editar - Ver opciones de edición\n"
+        "/editar\\_tip - Editar el tip\n"
+        "/editar\\_just - Editar la justificación\n"
+        "/editar\\_bib - Editar la bibliografía\n"
         "/admin - Ver este menú\n\n"
-        "**Flujo de creación:**\n"
-        "1. /caso\n"
-        "2. Envía el caso completo\n"
-        "3. (Opcional) Envía imágenes\n"
-        "4. /publicar para enviar al canal\n"
+        "**Flujo:**\n"
+        "1. /caso → Envía el caso → (Fotos) → /publicar\n"
+        "2. Antes de /publicar puedes usar /editar\n"
     )
     await update.message.reply_text(admin_text, parse_mode="Markdown")
 
@@ -539,6 +693,22 @@ def main() -> None:
                     MessageHandler(filters.PHOTO, image_handler),
                     MessageHandler(filters.Document.ALL, document_warning_handler),
                     CommandHandler("publicar", publicar_command),
+                    CommandHandler("editar", editar_command),
+                    CommandHandler("editar_tip", editar_tip_command),
+                    CommandHandler("editar_just", editar_just_command),
+                    CommandHandler("editar_bib", editar_bib_command),
+                    CommandHandler("cancelar", cancelar_command),
+                ],
+                STATE_EDIT_TIP: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, edit_tip_handler),
+                    CommandHandler("cancelar", cancelar_command),
+                ],
+                STATE_EDIT_JUSTIFICATION: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, edit_just_handler),
+                    CommandHandler("cancelar", cancelar_command),
+                ],
+                STATE_EDIT_BIB: [
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, edit_bib_handler),
                     CommandHandler("cancelar", cancelar_command),
                 ],
             },
