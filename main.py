@@ -251,9 +251,37 @@ async def caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         await update.message.reply_text("❌ Solo administradores pueden crear casos.")
         return ConversationHandler.END
 
+    # Check if there's already a pending case
+    pending = context.user_data.get("pending_case")
+    if pending and not context.user_data.get("caso_confirmed_replace"):
+        vig_short = pending.get("vignette", "")[:60].replace("\n", " ")
+        await update.message.reply_text(
+            f"⚠️ Ya tienes un caso pendiente:\n"
+            f"«{vig_short}...»\n\n"
+            "¿Qué deseas hacer?\n"
+            "/caso → Reemplazar con uno nuevo\n"
+            "/cancelar → Cancelar el pendiente\n"
+            "/publicar → Publicar el pendiente"
+        )
+        # Mark so next /caso goes through without asking again
+        context.user_data["caso_confirmed_replace"] = True
+        return STATE_WAITING_IMAGES
+
+    # Clean up any leftover unpublished preview
+    old_preview = context.user_data.get("preview_uuid")
+    if old_preview:
+        try:
+            supabase.delete_case(old_preview)
+            logger.info(f"Cleaned up old preview {old_preview} on new /caso")
+        except Exception as e:
+            logger.warning(f"Could not delete old preview {old_preview}: {e}")
+
     # Initialize conversation data
     context.user_data["pending_case"] = None
+    context.user_data["preview_uuid"] = None
     context.user_data["images"] = []
+    context.user_data["caso_confirmed_replace"] = False
+    context.user_data["published"] = False
 
     await update.message.reply_text(
         "📝 Envía el caso clínico completo (viñeta + opciones + CORRECTA + justificación + tip + bibliografía)"
@@ -415,6 +443,20 @@ async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT
     return STATE_WAITING_IMAGES
 
 
+async def waiting_images_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle unexpected text in WAITING_IMAGES state."""
+    await update.message.reply_text(
+        "⚠️ Ya hay un caso cargado. Opciones:\n\n"
+        "📸 Envía fotos para agregar imágenes\n"
+        "👁️ /preview → Ver en la Mini App\n"
+        "📢 /publicar → Publicar en el canal\n"
+        "✏️ /editar → Editar secciones\n"
+        "🔄 /caso → Reemplazar con otro caso\n"
+        "🗑️ /cancelar → Cancelar todo"
+    )
+    return STATE_WAITING_IMAGES
+
+
 async def editar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show edit menu for pending case."""
     pending = context.user_data.get("pending_case")
@@ -513,20 +555,24 @@ async def edit_bib_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle inline button callbacks for Preview and Publicar."""
     query = update.callback_query
-    await query.answer()
 
     if query.data == "action_preview":
-        # Simulate /preview command
-        # We need to create a fake update-like call, but simpler: just call the logic
+        await query.answer("⏳ Generando preview...")
         return await _do_preview(query, context)
     elif query.data == "action_publicar":
+        # Double-publish protection
+        if context.user_data.get("published"):
+            await query.answer("✅ Este caso ya fue publicado", show_alert=True)
+            return ConversationHandler.END
+        await query.answer("⏳ Publicando...")
         return await _do_publicar(query, context)
 
+    await query.answer()
     return STATE_WAITING_IMAGES
 
 
 async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Preview logic shared by /preview command and inline button."""
+    """Preview logic called from inline button. Edits the original message in-place."""
     pending_case = context.user_data.get("pending_case")
     if not pending_case:
         await query.message.reply_text("❌ No hay caso pendiente. Envía un caso primero con /caso")
@@ -547,23 +593,25 @@ async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             await query.message.reply_text("❌ Error al guardar preview.")
             return STATE_WAITING_IMAGES
 
-        keyboard = InlineKeyboardMarkup(
+        # Edit the SAME message: replace Preview/Publicar buttons with VER PREVIEW link
+        preview_url = f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={preview_uuid}"
+        new_keyboard = InlineKeyboardMarkup(
             [
                 [
                     InlineKeyboardButton(
                         text="👁️ VER PREVIEW",
-                        url=f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={preview_uuid}",
+                        url=preview_url,
                     )
-                ]
+                ],
+                [
+                    InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
+                    InlineKeyboardButton("🔄 Actualizar Preview", callback_data="action_preview"),
+                ],
             ]
         )
 
-        await query.message.reply_text(
-            "🔍 Preview guardado. Ábrelo aquí:\n\n"
-            "Cuando estés listo: /publicar\n"
-            "Para actualizar: /preview",
-            reply_markup=keyboard,
-        )
+        # Edit the original message to show preview link in the same message
+        await query.edit_message_reply_markup(reply_markup=new_keyboard)
         return STATE_WAITING_IMAGES
     except Exception as e:
         logger.error(f"Error creating preview from button: {e}")
@@ -572,10 +620,15 @@ async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Publicar logic called from inline button."""
+    """Publicar logic called from inline button. Edits message in-place."""
     user_id = query.from_user.id if query.from_user else None
     if not _is_admin(user_id):
         await query.message.reply_text("❌ Solo administradores pueden publicar casos.")
+        return ConversationHandler.END
+
+    # Double-publish protection
+    if context.user_data.get("published"):
+        await query.message.reply_text("✅ Este caso ya fue publicado.")
         return ConversationHandler.END
 
     try:
@@ -593,6 +646,9 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
         if not case_uuid:
             await query.message.reply_text("❌ Error al guardar el caso en la base de datos.")
             return ConversationHandler.END
+
+        # Mark as published IMMEDIATELY to prevent double-click race condition
+        context.user_data["published"] = True
 
         vignette = pending_case["vignette"]
         options = pending_case["options"]
@@ -647,11 +703,20 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             {"telegram_message_id": poll_msg.message_id, "published": True},
         )
 
-        await query.message.reply_text(
-            f"✅ Caso #{case_number} publicado en el canal.\n"
-            f"UUID: `{case_uuid}`",
-            parse_mode="Markdown",
-        )
+        # Edit the original message to show confirmation (no new message)
+        try:
+            await query.edit_message_text(
+                f"✅ Caso #{case_number} publicado en el canal.\n"
+                f"UUID: {case_uuid}",
+            )
+        except Exception:
+            # Fallback if edit fails
+            await query.message.reply_text(
+                f"✅ Caso #{case_number} publicado en el canal.\n"
+                f"UUID: `{case_uuid}`",
+                parse_mode="Markdown",
+            )
+
         context.user_data.clear()
         return ConversationHandler.END
 
@@ -719,11 +784,19 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await update.message.reply_text("❌ Solo administradores pueden publicar casos.")
         return ConversationHandler.END
 
+    # Double-publish protection
+    if context.user_data.get("published"):
+        await update.message.reply_text("✅ Este caso ya fue publicado. Usa /caso para crear uno nuevo.")
+        return ConversationHandler.END
+
     try:
         pending_case = context.user_data.get("pending_case")
         if not pending_case:
             await update.message.reply_text("❌ No hay un caso en preparación.")
             return ConversationHandler.END
+
+        # Mark as published IMMEDIATELY to prevent race conditions
+        context.user_data["published"] = True
 
         # Get case number BEFORE saving (so count is accurate)
         case_number = supabase.get_next_case_number()
@@ -827,7 +900,15 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle /cancelar command - cancel case creation."""
+    """Handle /cancelar command - cancel case creation and clean up preview."""
+    # Delete orphan preview from Supabase if it exists
+    preview_uuid = context.user_data.get("preview_uuid")
+    if preview_uuid:
+        try:
+            supabase.delete_case(preview_uuid)
+            logger.info(f"Cleaned up preview {preview_uuid} on cancel")
+        except Exception as e:
+            logger.warning(f"Could not delete preview {preview_uuid}: {e}")
     context.user_data.clear()
     await update.message.reply_text("🗑️ Cancelado")
     return ConversationHandler.END
@@ -917,6 +998,7 @@ def main() -> None:
                     CallbackQueryHandler(action_button_callback, pattern="^action_"),
                     MessageHandler(filters.PHOTO, image_handler),
                     MessageHandler(filters.Document.ALL, document_warning_handler),
+                    CommandHandler("caso", caso_command),
                     CommandHandler("publicar", publicar_command),
                     CommandHandler("preview", preview_command),
                     CommandHandler("editar", editar_command),
@@ -924,6 +1006,7 @@ def main() -> None:
                     CommandHandler("editar_just", editar_just_command),
                     CommandHandler("editar_bib", editar_bib_command),
                     CommandHandler("cancelar", cancelar_command),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND, waiting_images_text_handler),
                 ],
                 STATE_EDIT_TIP: [
                     MessageHandler(filters.TEXT & ~filters.COMMAND, edit_tip_handler),
