@@ -106,9 +106,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.message.reply_text(welcome_text)
         return
 
-    # Process deep link
+    # Process deep link - log ALL args for debugging
+    logger.info(f"/start called with args={args} for user {user.id}")
     deep_link = args[0]
-    logger.info(f"Processing deep link: {deep_link} for user {user.id}")
 
     # NEW FORMAT: case_UUID
     if deep_link.startswith("case_"):
@@ -125,12 +125,31 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     await _handle_old_format_deeplink(update, context, deep_link)
 
 
+async def _delete_previous_justification(
+    user_id: int, context: ContextTypes.DEFAULT_TYPE
+) -> None:
+    """Delete previous justification messages before sending new ones."""
+    prev_ids = context.user_data.get("last_justification_ids", [])
+    if prev_ids:
+        for mid in prev_ids:
+            try:
+                await context.bot.delete_message(chat_id=user_id, message_id=mid)
+            except Exception:
+                pass  # Message may already be deleted
+        context.user_data["last_justification_ids"] = []
+        logger.info(f"Deleted {len(prev_ids)} previous justification messages for user {user_id}")
+
+
 async def _handle_new_format_deeplink(
     update: Update, context: ContextTypes.DEFAULT_TYPE, deep_link: str
 ) -> None:
     """Handle new format deep links: case_UUID"""
     try:
         case_uuid = deep_link.replace("case_", "")
+        user_id = update.effective_user.id
+
+        # Delete previous justification messages
+        await _delete_previous_justification(user_id, context)
 
         # Send Mini App button
         keyboard = InlineKeyboardMarkup(
@@ -144,22 +163,30 @@ async def _handle_new_format_deeplink(
             ]
         )
 
-        await update.message.reply_text(
+        msg1 = await update.message.reply_text(
             "Abre tu justificación:",
             reply_markup=keyboard,
         )
 
         # Send random funny message
         funny_msg = get_random_message()
-        msg = await update.message.reply_text(funny_msg)
+        msg2 = await update.message.reply_text(funny_msg)
+
+        # Track sent message IDs for future deletion
+        sent_ids = [msg1.message_id, msg2.message_id]
+        context.user_data["last_justification_ids"] = sent_ids
 
         # Schedule auto-delete
         if Config.AUTO_DELETE_MINUTES > 0:
-            context.job_queue.run_once(
-                _delete_message,
-                when=timedelta(minutes=Config.AUTO_DELETE_MINUTES),
-                data=(update.effective_chat.id, msg.message_id),
-            )
+            for mid in sent_ids:
+                try:
+                    context.job_queue.run_once(
+                        _delete_message,
+                        when=timedelta(minutes=Config.AUTO_DELETE_MINUTES),
+                        data=(user_id, mid),
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not schedule auto-delete: {e}")
 
         logger.info(f"Mini App accessed for case {case_uuid}")
     except Exception as e:
@@ -174,8 +201,10 @@ async def _handle_old_format_deeplink(
     Handle old format deep links for backward compatibility.
     Formats: just_XX, j_XX, number only, p_USERNAME_MSGIDS, c_CHATID_MSGIDS, with optional n_ prefix for no joke
     """
+    user_id = update.effective_user.id
+    logger.info(f"Old format deep link: '{deep_link}' for user {user_id}")
+
     try:
-        user_id = update.effective_user.id
         source_chat_id = Config.JUSTIFICATIONS_CHAT_ID
         message_ids = []
         with_joke = True
@@ -197,7 +226,6 @@ async def _handle_old_format_deeplink(
             message_ids = [int(working)]
         elif working.startswith("p_"):
             # p_USERNAME_MSGIDS - public channel
-            # Find the last underscore to split username from message IDs
             parts = working[2:].rsplit("_", 1)
             if len(parts) == 2:
                 username = parts[0]
@@ -206,7 +234,7 @@ async def _handle_old_format_deeplink(
                 try:
                     chat = await context.bot.get_chat(f"@{username}")
                     source_chat_id = chat.id
-                except:
+                except Exception:
                     pass
         elif working.startswith("c_"):
             # c_CHATID_MSGIDS - private channel
@@ -220,6 +248,11 @@ async def _handle_old_format_deeplink(
             await update.message.reply_text("❌ Enlace inválido.")
             return
 
+        logger.info(f"Parsed: source_chat={source_chat_id}, msg_ids={message_ids}")
+
+        # Delete previous justification messages before sending new ones
+        await _delete_previous_justification(user_id, context)
+
         # Send each message
         sent_ids = []
         for msg_id in message_ids:
@@ -231,8 +264,9 @@ async def _handle_old_format_deeplink(
                     protect_content=True,
                 )
                 sent_ids.append(sent.message_id)
+                logger.info(f"Copied msg {msg_id} -> {sent.message_id}")
             except Exception as e:
-                logger.error(f"Error copying msg {msg_id}: {e}")
+                logger.error(f"Error copying msg {msg_id} from {source_chat_id}: {e}")
 
         if not sent_ids:
             await update.message.reply_text("❌ Justificación no encontrada.")
@@ -246,20 +280,28 @@ async def _handle_old_format_deeplink(
         msg = await update.message.reply_text(funny)
         sent_ids.append(msg.message_id)
 
+        # Track sent message IDs for future deletion
+        context.user_data["last_justification_ids"] = sent_ids
+
         # Schedule auto-delete for ALL sent messages
         if Config.AUTO_DELETE_MINUTES > 0:
             for mid in sent_ids:
-                context.job_queue.run_once(
-                    _delete_message,
-                    when=timedelta(minutes=Config.AUTO_DELETE_MINUTES),
-                    data=(user_id, mid),
-                )
+                try:
+                    context.job_queue.run_once(
+                        _delete_message,
+                        when=timedelta(minutes=Config.AUTO_DELETE_MINUTES),
+                        data=(user_id, mid),
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not schedule auto-delete for msg {mid}: {e}")
+
+        logger.info(f"Old deep link processed successfully: {len(sent_ids)} messages sent")
 
     except ValueError as e:
-        logger.error(f"Error parsing old format deep link: {e}")
+        logger.error(f"Error parsing old format deep link '{deep_link}': {e}")
         await update.message.reply_text("❌ Enlace inválido.")
     except Exception as e:
-        logger.error(f"Error handling old format deep link: {e}")
+        logger.error(f"Error handling old format deep link '{deep_link}': {e}", exc_info=True)
         await update.message.reply_text("❌ Error al procesar el enlace.")
 
 
