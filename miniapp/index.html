@@ -206,14 +206,25 @@
                 h += '<div class="answer-color-strip"><span></span><span></span><span></span><span></span><span></span></div></div>';
             }
             h += '<div class="section-title">Análisis y Fundamentación del Caso Clínico</div>';
-            const caseImages = Array.isArray(d.images) ? d.images : [];
-            if (caseImages.length) { h += '<div class="case-images">'; caseImages.forEach(url => { if(url && typeof url === 'string') h += '<img src="'+esc(url)+'" alt="Imagen" loading="lazy">'; }); h += '</div>'; }
-            if (d.justification) { h += '<div class="justification-wrap"><div class="justification" id="justText">'; d.justification.split('\n').filter(p=>p.trim()).forEach(p => { h += '<p>'+esc(p.trim())+'</p>'; }); h += '</div></div>'; }
+            if (d.justification) {
+                h += '<div class="justification-wrap"><div class="justification" id="justText">';
+                // Smart paragraph splitting: double newline = new paragraph
+                // Single newlines within a paragraph are joined with space
+                const rawParas = d.justification.split(/\n\s*\n/);
+                rawParas.filter(p=>p.trim()).forEach(p => {
+                    // Join single newlines within this paragraph block
+                    const merged = p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
+                    h += '<p>'+esc(merged)+'</p>';
+                });
+                h += '</div></div>';
+            }
             if (d.tip) {
                 h += '<div class="tip-section"><div class="tip-header"><div class="tip-icon">💡</div><div class="tip-label">Tip Acamédico</div></div>';
                 h += '<div class="tip-bars"><span></span><span></span><span></span></div>';
                 h += '<div class="tip-content-box"><div class="tip-text">'+esc(d.tip)+'</div></div></div>';
             }
+            const caseImages = Array.isArray(d.images) ? d.images : [];
+            if (caseImages.length) { h += '<div class="case-images">'; caseImages.forEach(url => { if(url && typeof url === 'string') h += '<img src="'+esc(url)+'" alt="Imagen" loading="lazy">'; }); h += '</div>'; }
             const bibRefs = parseBibliography(d.bibliography);
             if (bibRefs.length > 0) {
                 h += '<div class="bib-accordion" id="bibAccordion"><button class="bib-toggle" id="bibToggle"><div class="bib-toggle-left"><div class="bib-toggle-dot"></div><span class="bib-toggle-text">Referencias Bibliográficas</span><span class="bib-toggle-count">'+bibRefs.length+'</span></div><svg class="bib-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="bib-content"><div class="bib-grid">';
