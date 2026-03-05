@@ -13,7 +13,15 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import pytz
 
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardRemove
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    ReplyKeyboardRemove,
+    WebAppInfo,
+)
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -49,6 +57,20 @@ supabase = None
 app = None
 
 
+def _admin_keyboard() -> ReplyKeyboardMarkup:
+    """Build persistent keyboard for admin with main commands."""
+    keyboard = [
+        [KeyboardButton("/caso"), KeyboardButton("/preview")],
+        [KeyboardButton("/publicar"), KeyboardButton("/cancelar")],
+        [KeyboardButton("/editar"), KeyboardButton("/admin")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard,
+        resize_keyboard=True,
+        is_persistent=True,
+    )
+
+
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Handle /start command.
@@ -66,6 +88,10 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 "/caso - Crear caso clínico\n"
                 "/admin - Ver todos los comandos"
             )
+            await update.message.reply_text(
+                welcome_text,
+                reply_markup=_admin_keyboard(),
+            )
         else:
             welcome_text = (
                 "🎓 ¡Bienvenido a ACAMEDICS!\n\n"
@@ -76,7 +102,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 "👉 Únete al canal y haz clic en "
                 "'VER JUSTIFICACIÓN' después de responder cada caso."
             )
-        await update.message.reply_text(welcome_text)
+            await update.message.reply_text(welcome_text)
         return
 
     # Process deep link
@@ -929,7 +955,11 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "3. /preview → Revisa en la Mini App\n"
         "4. /publicar → Se envía al canal\n"
     )
-    await update.message.reply_text(admin_text, parse_mode="Markdown")
+    await update.message.reply_text(
+        admin_text,
+        parse_mode="Markdown",
+        reply_markup=_admin_keyboard(),
+    )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -964,6 +994,22 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
             logger.error(f"Could not send error message: {e}")
 
 
+async def post_init(application) -> None:
+    """Set bot commands menu after initialization."""
+    from telegram import BotCommand
+    commands = [
+        BotCommand("caso", "📝 Crear caso clínico"),
+        BotCommand("preview", "👁️ Ver preview en Mini App"),
+        BotCommand("publicar", "📢 Publicar en el canal"),
+        BotCommand("editar", "✏️ Editar secciones del caso"),
+        BotCommand("cancelar", "🗑️ Cancelar caso pendiente"),
+        BotCommand("admin", "🔧 Panel de administrador"),
+        BotCommand("help", "ℹ️ Ayuda"),
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("Bot commands menu registered")
+
+
 def main() -> None:
     """Main entry point for the bot."""
     global supabase, app
@@ -973,8 +1019,8 @@ def main() -> None:
         supabase = init_supabase(Config.SUPABASE_URL, Config.SUPABASE_KEY, Config.SUPABASE_SERVICE_KEY)
         logger.info("Supabase initialized")
 
-        # Create bot application
-        app = Application.builder().token(Config.BOT_TOKEN).build()
+        # Create bot application with post_init for command menu
+        app = Application.builder().token(Config.BOT_TOKEN).post_init(post_init).build()
 
         # Register handlers
         # Start command
@@ -1034,6 +1080,83 @@ def main() -> None:
         app.add_handler(CommandHandler("preview", fallback_preview))
         app.add_handler(CommandHandler("publicar", fallback_publicar))
 
+        # Handler for EDITED messages - re-parse the case when admin edits their message
+        async def edited_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+            """Handle edited messages - re-parse case if admin edits their case text."""
+            if not update.edited_message or not update.edited_message.text:
+                return
+            if not _is_admin(update.edited_message.from_user.id):
+                return
+
+            # Only re-parse if we have a pending case (user is in case creation flow)
+            pending = context.user_data.get("pending_case")
+            if not pending:
+                return
+
+            text = update.edited_message.text
+            # Don't process commands
+            if text.startswith("/"):
+                return
+
+            try:
+                parsed = parse_case(text)
+                if not parsed.parsed_ok:
+                    await update.edited_message.reply_text(
+                        "⚠️ Caso editado detectado pero tiene errores:\n"
+                        + "\n".join(f"• {e}" for e in parsed.errors[:3])
+                    )
+                    return
+
+                # Update the pending case with new parsed data
+                old_images = context.user_data.get("pending_case", {}).get("images", [])
+                context.user_data["pending_case"] = parsed.to_dict()
+                context.user_data["pending_case"]["images"] = old_images
+
+                # Update preview in Supabase if exists
+                preview_uuid = context.user_data.get("preview_uuid")
+                if preview_uuid:
+                    supabase.update_case(preview_uuid, context.user_data["pending_case"])
+
+                # Build score
+                checks = [
+                    ("Viñeta", bool(parsed.vignette)),
+                    ("Opciones", len(parsed.options) >= 2),
+                    ("Correcta", bool(parsed.correct_letter)),
+                    ("Justificación", bool(parsed.justification)),
+                    ("Tip", bool(parsed.tip)),
+                    ("Bibliografía", len(parsed.bibliography) > 0),
+                ]
+                passed = sum(1 for _, ok in checks if ok)
+                total = len(checks)
+                score_bar = "".join("🟢" if ok else "🔴" for _, ok in checks)
+                score_emoji = "✅" if passed == total else "⚠️"
+
+                preview_status = ""
+                if preview_uuid:
+                    preview_status = "\n🔄 Preview actualizado automáticamente"
+
+                buttons = [
+                    [
+                        InlineKeyboardButton("👁️ Preview", callback_data="action_preview"),
+                        InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
+                    ]
+                ]
+                await update.edited_message.reply_text(
+                    f"🔄 Caso actualizado desde edición\n"
+                    f"{score_emoji} {passed}/{total} {score_bar}{preview_status}",
+                    reply_markup=InlineKeyboardMarkup(buttons),
+                )
+                # Reset published flag since case changed
+                context.user_data["published"] = False
+
+            except Exception as e:
+                logger.error(f"Error processing edited message: {e}")
+
+        app.add_handler(MessageHandler(
+            filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND,
+            edited_message_handler,
+        ))
+
         # Error handler
         app.add_error_handler(error_handler)
 
@@ -1061,7 +1184,11 @@ def main() -> None:
 
         # Start the bot (blocking call)
         # drop_pending_updates=True prevents processing old queued updates on restart
-        app.run_polling(drop_pending_updates=True)
+        # allowed_updates includes edited_message so bot detects when admin edits case text
+        app.run_polling(
+            drop_pending_updates=True,
+            allowed_updates=["message", "edited_message", "callback_query"],
+        )
 
     except Exception as e:
         logger.error(f"Fatal error: {e}")
