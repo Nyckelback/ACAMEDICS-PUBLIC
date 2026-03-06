@@ -500,9 +500,20 @@
         }
 
         // ─── Render case with new design ───
+        // Generate a consistent display number (1000-3000) from UUID
+        function caseDisplayNum(uuid) {
+            if (!uuid) return 1000;
+            let hash = 0;
+            for (let i = 0; i < uuid.length; i++) {
+                hash = ((hash << 5) - hash) + uuid.charCodeAt(i);
+                hash |= 0;
+            }
+            return 1000 + (Math.abs(hash) % 2001); // 1000–3000
+        }
+
         function renderCase(d) {
             const phrase = getPhrase();
-            const caseNum = d.id || d.case_number || '';
+            const caseNum = caseDisplayNum(d.id || '');
             let html = '';
 
             // ── HEADER ──
