@@ -45,7 +45,7 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        .app { max-width: 640px; margin: 0 auto; padding: 0 20px 48px; }
+        .app { max-width: 640px; margin: 0 auto; padding: 0 20px 12px; }
 
         /* ═══════════════════════════════════════════
            LOADING & ERROR
@@ -222,10 +222,11 @@
         }
         .img-toggle-left { display: flex; align-items: center; gap: 10px; }
         .img-toggle-icon {
-            font-size: 15px; width: 26px; height: 26px;
-            border-radius: 7px; background: rgba(200,70,119,0.08);
+            width: 26px; height: 26px;
+            border-radius: 7px; background: var(--primary-glow);
             display: flex; align-items: center; justify-content: center;
         }
+        .img-toggle-icon svg { width: 14px; height: 14px; color: var(--primary); }
         .img-toggle-text {
             font-family: var(--font-title);
             font-size: 12px; font-weight: 600;
@@ -336,17 +337,21 @@
            FOOTER
         ═══════════════════════════════════════════ */
         .footer {
-            margin-top: 32px;
-            padding-top: 20px;
+            margin-top: 28px;
+            padding: 18px 0 8px;
             border-top: 1px solid var(--border);
             text-align: center;
         }
         .motivation {
-            display: flex; align-items: flex-start; justify-content: center; gap: 6px;
-            margin-bottom: 16px;
-            padding: 0 8px;
+            position: relative;
+            margin-bottom: 14px;
+            padding: 0 16px;
         }
-        .motivation-icon { font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+        .motivation-icon {
+            position: absolute;
+            left: 2px; top: 0;
+            font-size: 11px;
+        }
         .motivation-text {
             font-family: var(--font-body);
             font-size: 12px;
@@ -359,7 +364,7 @@
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
-        .footer-logo { text-align: center; margin-bottom: 16px; }
+        .footer-logo { text-align: center; margin-bottom: 12px; }
         .footer-logo img { height: 16px; width: auto; opacity: 0.45; }
         .footer-logo-text {
             font-family: var(--font-title);
@@ -369,7 +374,7 @@
         }
         .footer-social {
             display: flex; justify-content: center; gap: 20px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
         .footer-link {
             display: flex; align-items: center; gap: 5px;
@@ -588,7 +593,7 @@
                 html += '<div class="img-accordion open" id="imgAccordion">';
                 html += '<button class="img-toggle" id="imgToggle">';
                 html += '<div class="img-toggle-left">';
-                html += '<div class="img-toggle-icon">🖼️</div>';
+                html += '<div class="img-toggle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>';
                 html += '<span class="img-toggle-text">Recurso Adicional</span>';
                 html += '<span class="img-toggle-count">'+caseImages.length+'</span>';
                 html += '</div>';
