@@ -4,172 +4,418 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="light only">
-    <title>ACAMEDICS</title>
+    <title>ACAMEDICS — Justificación</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600;700&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         @font-face { font-family: 'Neue Kabel'; src: local('Neue Kabel'), local('ITC Kabel'); }
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
         :root {
             color-scheme: light only;
-            --teal: #18828c; --teal-light: #3ebdac; --teal-primary: #159F92; --teal-dark: #0e7774;
-            --navy: #1e3a5f; --purple: #6b4c7f; --beige: #cabc90; --cream: #f8f5ef;
-            --text: #1a1a1a; --text-soft: #444; --text-muted: #999; --border: #eaeaea; --bg: #ffffff;
-            --shadow-soft: 0 2px 16px rgba(0,0,0,0.04); --shadow-card: 0 4px 24px rgba(0,0,0,0.06);
-            --font-title: 'Neue Kabel', 'ITC Kabel', system-ui, sans-serif;
+            --primary: #18828C;
+            --primary-dark: #126A72;
+            --primary-glow: rgba(24,130,140,0.10);
+            --primary-subtle: rgba(24,130,140,0.04);
+            --accent: #C84677;
+            --accent-subtle: rgba(200,70,119,0.06);
+
+            --navy: #0F172A;
+            --navy-soft: #1E293B;
+            --slate: #334155;
+            --text: #1A1A2E;
+            --text-body: #2D3748;
+            --text-muted: #94A3B8;
+            --border: #E2E8F0;
+            --bg: #FFFFFF;
+
+            --font-title: 'Neue Kabel', 'Josefin Sans', 'Helvetica Neue', sans-serif;
             --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
-            --font-size-base: 17px;
+            --font-size-base: 16px;
         }
+
         html, body {
             background: var(--bg) !important; color: var(--text) !important;
-            font-family: var(--font-body); font-size: var(--font-size-base); line-height: 1.45; overflow-x: hidden;
+            font-family: var(--font-body); font-size: var(--font-size-base);
+            line-height: 1.6; overflow-x: hidden;
+            -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
             -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
             -webkit-tap-highlight-color: transparent;
-            -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
         }
-        body::before {
-            content: ''; position: fixed; left: 14px; top: 0; bottom: 0;
-            width: 1px; background: linear-gradient(180deg, transparent, var(--teal) 20%, var(--teal) 80%, transparent);
-            opacity: 0.1; z-index: 1; pointer-events: none;
-        }
-        .app-container { max-width: 680px; margin: 0 auto; padding: 0 22px; position: relative; }
+
+        .app { max-width: 640px; margin: 0 auto; padding: 0 20px 48px; }
+
+        /* ═══════════════════════════════════════════
+           LOADING & ERROR
+        ═══════════════════════════════════════════ */
         .loading-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; gap: 16px; }
-        .spinner { width: 40px; height: 40px; border: 3px solid var(--teal); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
+        .spinner { width: 40px; height: 40px; border: 3px solid var(--primary); border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
         .loading-text { font-size: 14px; color: var(--text-muted); text-align: center; }
         .error-container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; gap: 16px; padding: 20px; }
-        .error-icon { font-size: 40px; } .error-text { font-size: 14px; color: var(--text-muted); text-align: center; }
-        .retry-btn { background: var(--teal); color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
-        .header { display: flex; align-items: center; gap: 5px; padding: 16px 0 10px; }
-        .header-emoji { font-size: 18px; line-height: 1; }
-        .header-brand { font-family: var(--font-title); font-size: 22px; font-weight: 700; color: var(--navy); letter-spacing: -0.02em; line-height: 1; }
-        .header-brand-img { height: 18px; width: auto; display: block; }
-        .header-right { margin-left: auto; }
-        .font-cycle-btn { border: none; background: transparent; font-family: var(--font-title); font-size: 16px; font-weight: 600; color: var(--text-muted); cursor: pointer; padding: 4px 2px; letter-spacing: -0.5px; opacity: 0.5; transition: opacity 0.2s, color 0.2s; -webkit-tap-highlight-color: transparent; }
-        .font-cycle-btn:active, .font-cycle-btn.active { opacity: 1; color: var(--teal-primary); }
-        .header-bars { display: flex; gap: 3px; margin-top: 4px; }
-        .header-bars span:nth-child(1) { width: 18px; height: 2px; background: var(--teal); border-radius: 1px; }
-        .header-bars span:nth-child(2) { width: 10px; height: 2px; background: var(--teal-light); border-radius: 1px; }
-        .header-bars span:nth-child(3) { width: 5px; height: 2px; background: var(--teal); border-radius: 1px; }
-        .answer-card { margin: 14px 0 0; background: linear-gradient(135deg, var(--teal) 0%, var(--teal-primary) 60%, var(--teal-light) 100%); border-radius: 14px; padding: 14px 20px; position: relative; overflow: hidden; box-shadow: 0 4px 20px rgba(21,159,146,0.2); }
-        .answer-card::after { content: ''; position: absolute; right: -10px; top: -10px; width: 55%; height: 130%; opacity: 0.07; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'%3E%3Ccircle cx='30' cy='30' r='2.5' fill='white'/%3E%3Ccircle cx='80' cy='50' r='2' fill='white'/%3E%3Ccircle cx='50' cy='90' r='2.5' fill='white'/%3E%3Ccircle cx='120' cy='40' r='2' fill='white'/%3E%3Ccircle cx='150' cy='80' r='2.5' fill='white'/%3E%3Ccircle cx='100' cy='120' r='2' fill='white'/%3E%3Ccircle cx='170' cy='140' r='2.5' fill='white'/%3E%3Cline x1='30' y1='30' x2='80' y2='50' stroke='white' stroke-width='0.6'/%3E%3Cline x1='80' y1='50' x2='120' y2='40' stroke='white' stroke-width='0.6'/%3E%3Cline x1='120' y1='40' x2='150' y2='80' stroke='white' stroke-width='0.6'/%3E%3Cline x1='150' y1='80' x2='100' y2='120' stroke='white' stroke-width='0.6'/%3E%3Cline x1='100' y1='120' x2='170' y2='140' stroke='white' stroke-width='0.6'/%3E%3C/svg%3E"); background-size: 200px 200px; pointer-events: none; }
-        .answer-label { font-size: 10px; font-weight: 700; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 3px; }
-        .answer-text { font-family: var(--font-body); font-size: 16px; font-weight: 600; color: #fff; line-height: 1.35; position: relative; z-index: 1; }
-        .answer-color-strip { display: flex; height: 3px; overflow: hidden; margin: 12px -20px -14px; border-radius: 0 0 14px 14px; }
-        .answer-color-strip span { flex: 1; }
-        .answer-color-strip span:nth-child(1) { background: var(--navy); }
-        .answer-color-strip span:nth-child(2) { background: var(--navy); }
-        .answer-color-strip span:nth-child(3) { background: var(--teal); }
-        .answer-color-strip span:nth-child(4) { background: var(--teal-primary); }
-        .answer-color-strip span:nth-child(5) { background: var(--teal-light); }
-        .section-title { font-family: var(--font-title); font-size: 28px; font-weight: 400; color: var(--navy); text-transform: uppercase; letter-spacing: 0.01em; margin: 30px 0 18px; line-height: 1.25; }
-        .justification-wrap { position: relative; margin-bottom: 8px; }
-        .justification { font-family: var(--font-body); font-size: var(--font-size-base); color: var(--text) !important; line-height: 1.5; text-align: justify; transition: font-size 0.2s ease; }
-        .justification p { margin-bottom: 14px; position: relative; }
-        .justification p::before { content: ''; position: absolute; left: -16px; top: 8px; width: 4px; height: 4px; border-radius: 50%; }
-        .justification p:nth-child(6n+1)::before { background: var(--teal); }
-        .justification p:nth-child(6n+2)::before { background: var(--teal-light); }
-        .justification p:nth-child(6n+3)::before { background: var(--navy); }
-        .justification p:nth-child(6n+4)::before { background: var(--purple); }
-        .justification p:nth-child(6n+5)::before { background: var(--beige); }
-        .justification p:nth-child(6n+6)::before { background: var(--teal-primary); }
-        .justification p:first-child::first-letter { font-size: 3em; color: var(--teal-primary); font-weight: 700; float: left; line-height: 0.85; margin-right: 6px; margin-top: 3px; }
-        .tip-section { margin: 26px 0; }
-        .tip-header { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-        .tip-icon { width: 32px; height: 32px; border-radius: 50%; background: rgba(24,130,140,0.08); border: 1.5px solid rgba(24,130,140,0.3); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
-        .tip-label { font-family: var(--font-title); font-size: 14px; font-weight: 700; color: var(--purple); text-transform: uppercase; letter-spacing: 0.5px; }
-        .tip-bars { display: flex; gap: 3px; margin-bottom: 8px; }
-        .tip-bars span:nth-child(1) { width: 14px; height: 1.5px; background: var(--teal); border-radius: 1px; }
-        .tip-bars span:nth-child(2) { width: 8px; height: 1.5px; background: var(--teal-light); border-radius: 1px; }
-        .tip-bars span:nth-child(3) { width: 4px; height: 1.5px; background: var(--teal); border-radius: 1px; }
-        .tip-content-box { background: linear-gradient(135deg, rgba(24,130,140,0.035), rgba(62,189,172,0.015)); border-left: 3px solid var(--teal); border-radius: 0 12px 12px 0; padding: 16px 20px; box-shadow: 0 1px 8px rgba(24,130,140,0.04); }
-        .tip-text { font-family: var(--font-body); font-size: var(--font-size-base); color: var(--text) !important; line-height: 1.5; }
-        .bib-accordion { margin: 28px 0 24px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: box-shadow 0.3s; box-shadow: var(--shadow-soft); }
-        .bib-accordion.open { box-shadow: var(--shadow-card); }
-        .bib-toggle { width: 100%; background: #fafafa; border: none; padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; transition: background 0.2s; }
-        .bib-toggle:active { background: #f0f0f0; }
-        .bib-toggle-left { display: flex; align-items: center; gap: 8px; }
-        .bib-toggle-dot { width: 5px; height: 5px; background: var(--navy); border-radius: 50%; }
-        .bib-toggle-text { font-family: var(--font-title); font-size: 13px; font-weight: 700; color: var(--navy); text-transform: uppercase; letter-spacing: 0.5px; }
-        .bib-toggle-count { font-family: var(--font-body); font-size: 11px; color: var(--text-muted); background: var(--border); padding: 2px 8px; border-radius: 10px; }
-        .bib-chevron { width: 18px; height: 18px; transition: transform 0.3s ease; color: var(--text-muted); }
-        .bib-accordion.open .bib-chevron { transform: rotate(180deg); }
-        .bib-content { max-height: 0; overflow: hidden; transition: max-height 0.35s ease, padding 0.35s ease; padding: 0 18px; }
-        .bib-accordion.open .bib-content { max-height: 600px; padding: 12px 18px 18px; }
-        .bib-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .bib-item { display: flex; gap: 8px; align-items: flex-start; }
-        .bib-dot { width: 4px; height: 4px; margin-top: 6px; flex-shrink: 0; border-radius: 50%; }
-        .bib-item-text { font-family: var(--font-body); font-size: 13px; color: var(--text-soft); line-height: 1.4; }
-        .footer { padding: 20px 0; border-top: 1px solid var(--border); margin-top: 16px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
-        .footer-social { display: flex; gap: 20px; }
-        .footer-item { display: flex; align-items: center; gap: 6px; text-decoration: none; font-size: 13px; color: var(--text-soft); font-weight: 500; transition: color 0.2s; }
-        .footer-item:active { color: var(--teal); }
-        .footer-item svg { width: 18px; height: 18px; flex-shrink: 0; }
-        .footer-copy { font-size: 11px; color: var(--text-soft); opacity: 0.6; text-align: center; font-family: var(--font-body); letter-spacing: 0.3px; }
-        .bottom-accent { position: fixed; bottom: 0; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, var(--navy), var(--teal), var(--teal-light)); z-index: 50; }
-        .constellation { position: absolute; pointer-events: none; z-index: 0; }
-        .img-accordion { margin: 24px 0 20px; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; transition: box-shadow 0.3s; box-shadow: var(--shadow-card); }
-        .img-accordion .bib-toggle { background: linear-gradient(135deg, rgba(24,130,140,0.04), rgba(107,76,127,0.03)); }
-        .img-accordion.open .bib-chevron { transform: rotate(180deg); }
-        .img-accordion .img-content { max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.4s ease; padding: 0 14px; }
-        .img-accordion.open .img-content { max-height: 3000px; padding: 14px; }
-        .img-accordion .img-content img { width: 100%; border-radius: 10px; margin-bottom: 12px; box-shadow: var(--shadow-soft); cursor: pointer; -webkit-user-drag: none; transition: transform 0.2s; }
-        .img-accordion .img-content img:active { transform: scale(0.98); }
-        .lightbox { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.92); z-index: 1000; align-items: center; justify-content: center; flex-direction: column; padding: 20px; }
+        .error-icon { font-size: 40px; }
+        .error-text { font-size: 14px; color: var(--text-muted); text-align: center; }
+        .retry-btn { background: var(--primary); color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+
+        /* ═══════════════════════════════════════════
+           HEADER
+        ═══════════════════════════════════════════ */
+        .header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 0 14px;
+        }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .header-logo { height: 17px; width: auto; display: block; }
+        .header-divider { width: 1px; height: 14px; background: var(--border); }
+        .header-case {
+            font-family: var(--font-title);
+            font-size: 11px; font-weight: 600;
+            color: var(--primary); text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        /* ═══════════════════════════════════════════
+           DIVIDER
+        ═══════════════════════════════════════════ */
+        .divider { height: 1px; background: var(--border); }
+        .divider--primary {
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary), var(--border) 70%, transparent);
+        }
+
+        /* ═══════════════════════════════════════════
+           HERO SECTION — title + answer
+        ═══════════════════════════════════════════ */
+        .hero { padding: 24px 0 28px; }
+
+        .eyebrow-row {
+            display: flex; align-items: flex-start; justify-content: space-between;
+            gap: 12px; margin-bottom: 20px;
+        }
+        .eyebrow-row .hero-title { margin-bottom: 0; }
+
+        .font-btn {
+            border: 1.5px solid var(--border); background: var(--bg);
+            font-family: var(--font-title); font-size: 13px; font-weight: 500;
+            color: var(--text-muted); cursor: pointer;
+            width: 32px; height: 32px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s; flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .font-btn:active, .font-btn.active {
+            border-color: var(--primary); color: var(--primary);
+        }
+
+        .hero-title {
+            font-family: var(--font-title);
+            font-size: 25px; font-weight: 600;
+            color: var(--navy);
+            line-height: 1.3;
+            margin-bottom: 20px;
+        }
+
+        /* Answer strip */
+        .answer-strip {
+            display: flex; align-items: center; gap: 14px;
+            background: var(--primary);
+            border-radius: 10px;
+            padding: 14px 16px;
+        }
+        .answer-letter {
+            font-family: var(--font-title);
+            font-size: 20px; font-weight: 700;
+            color: #FFFFFF;
+            background: rgba(255,255,255,0.18);
+            width: 34px; height: 34px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .answer-text {
+            font-family: var(--font-body);
+            font-size: 15px; font-weight: 500;
+            color: #FFFFFF;
+            line-height: 1.4;
+        }
+
+        /* ═══════════════════════════════════════════
+           JUSTIFICATION
+        ═══════════════════════════════════════════ */
+        .justification-section { padding: 28px 0 24px; }
+
+        .justification {
+            font-family: var(--font-body);
+            font-size: var(--font-size-base);
+            color: var(--text-body);
+            line-height: 1.75;
+            text-align: justify;
+            transition: font-size 0.2s ease;
+        }
+        .justification p { margin-bottom: 18px; }
+        .justification p:last-child { margin-bottom: 0; }
+
+        /* Drop cap */
+        .justification p:first-child::first-letter {
+            font-family: var(--font-title);
+            font-size: 3em;
+            color: var(--accent);
+            font-weight: 700;
+            float: left;
+            line-height: 0.8;
+            margin-right: 8px;
+            margin-top: 5px;
+        }
+
+        /* ═══════════════════════════════════════════
+           TIP SECTION
+        ═══════════════════════════════════════════ */
+        .tip-section {
+            padding: 0;
+            background: var(--primary-subtle);
+            margin: 0 -20px;
+        }
+        .tip-accent-bar {
+            height: 3px;
+            background: linear-gradient(90deg, var(--primary), var(--accent));
+        }
+        .tip-inner { padding: 24px 20px 24px; }
+        .tip-header {
+            display: flex; align-items: center; gap: 10px;
+            margin-bottom: 16px;
+        }
+        .tip-icon {
+            width: 30px; height: 30px;
+            border-radius: 8px;
+            background: var(--primary-glow);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px;
+        }
+        .tip-label {
+            font-family: var(--font-title);
+            font-size: 14px; font-weight: 700;
+            color: var(--navy);
+            letter-spacing: 0.3px;
+        }
+        .tip-label-accent { color: var(--primary); }
+        .tip-text {
+            font-family: var(--font-body);
+            font-size: 16px;
+            color: var(--text-body);
+            line-height: 1.75;
+            padding-left: 16px;
+            border-left: 3px solid var(--primary);
+            text-align: justify;
+        }
+
+        /* ═══════════════════════════════════════════
+           IMAGES ACCORDION
+        ═══════════════════════════════════════════ */
+        .img-accordion { margin: 24px 0 0; }
+        .img-toggle {
+            width: 100%; background: none; border: none;
+            padding: 0 0 16px;
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer;
+        }
+        .img-toggle-left { display: flex; align-items: center; gap: 10px; }
+        .img-toggle-icon {
+            font-size: 15px; width: 26px; height: 26px;
+            border-radius: 7px; background: rgba(200,70,119,0.08);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .img-toggle-text {
+            font-family: var(--font-title);
+            font-size: 12px; font-weight: 600;
+            color: var(--slate);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .img-toggle-count {
+            font-family: var(--font-body);
+            font-size: 11px; color: var(--text-muted);
+            background: var(--border); padding: 2px 8px; border-radius: 10px;
+        }
+        .img-chevron {
+            width: 18px; height: 18px;
+            color: var(--text-muted);
+            transition: transform 0.3s;
+        }
+        .img-accordion.open .img-chevron { transform: rotate(180deg); }
+        .img-content {
+            max-height: 0; overflow: hidden;
+            transition: max-height 0.4s ease;
+        }
+        .img-accordion.open .img-content { max-height: 3000px; }
+        .img-content img {
+            width: 100%; border-radius: 10px;
+            margin-bottom: 12px; cursor: pointer;
+            -webkit-user-drag: none;
+            transition: transform 0.2s;
+        }
+        .img-content img:active { transform: scale(0.98); }
+
+        /* Lightbox */
+        .lightbox {
+            display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.92); z-index: 1000;
+            align-items: center; justify-content: center; flex-direction: column; padding: 20px;
+        }
         .lightbox.active { display: flex; }
         .lightbox img { max-width: 100%; max-height: 85vh; border-radius: 8px; object-fit: contain; }
-        .lightbox-close { position: absolute; top: 16px; right: 16px; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,0.15); border: none; color: #fff; font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
+        .lightbox-close {
+            position: absolute; top: 16px; right: 16px;
+            width: 36px; height: 36px; border-radius: 50%;
+            background: rgba(255,255,255,0.15); border: none;
+            color: #fff; font-size: 20px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            backdrop-filter: blur(4px);
+        }
         .lightbox-hint { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 12px; }
-        @media (max-width: 480px) {
-            .app-container { padding: 0 18px; } .header-brand { font-size: 22px; }
-            .section-title { font-size: 23px; } .answer-text { font-size: 15px; }
-            .bib-grid { grid-template-columns: 1fr; }
-            .footer { flex-direction: column; gap: 12px; }
-            .justification p::before { left: -13px; }
-            .constellation { opacity: 0.35; }
-            body::before { display: none; }
+
+        /* ═══════════════════════════════════════════
+           BIBLIOGRAPHY
+        ═══════════════════════════════════════════ */
+        .bib-section { padding: 24px 0 0; }
+        .bib-toggle {
+            width: 100%; background: none; border: none;
+            padding: 0 0 16px;
+            display: flex; align-items: center; justify-content: space-between;
+            cursor: pointer;
+        }
+        .bib-toggle-left { display: flex; align-items: center; gap: 10px; }
+        .bib-toggle-num {
+            font-family: var(--font-title);
+            font-size: 13px; font-weight: 600;
+            color: var(--primary);
+            width: 26px; height: 26px;
+            border-radius: 7px;
+            background: var(--primary-glow);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .bib-toggle-text {
+            font-family: var(--font-title);
+            font-size: 12px; font-weight: 600;
+            color: var(--slate);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .bib-chevron {
+            width: 18px; height: 18px;
+            color: var(--text-muted);
+            transition: transform 0.3s;
+        }
+        .bib-section.open .bib-chevron { transform: rotate(180deg); }
+        .bib-content {
+            max-height: 0; overflow: hidden;
+            transition: max-height 0.35s ease;
+        }
+        .bib-section.open .bib-content { max-height: 800px; }
+        .bib-list { padding: 0 0 8px; }
+        .bib-item {
+            display: flex; gap: 10px; align-items: flex-start;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(226,232,240,0.5);
+        }
+        .bib-item:last-child { border-bottom: none; }
+        .bib-num {
+            font-family: var(--font-title);
+            font-size: 12px; font-weight: 600;
+            color: var(--primary);
+            min-width: 16px; padding-top: 2px;
+        }
+        .bib-ref {
+            font-family: var(--font-body);
+            font-size: 13px; color: var(--slate);
+            line-height: 1.55;
+        }
+
+        /* ═══════════════════════════════════════════
+           FOOTER
+        ═══════════════════════════════════════════ */
+        .footer {
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+        .motivation {
+            display: flex; align-items: flex-start; justify-content: center; gap: 6px;
+            margin-bottom: 16px;
+            padding: 0 8px;
+        }
+        .motivation-icon { font-size: 11px; flex-shrink: 0; margin-top: 1px; }
+        .motivation-text {
+            font-family: var(--font-body);
+            font-size: 12px;
+            font-style: italic;
+            color: var(--text-muted);
+            line-height: 1.5;
+            text-align: center;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .footer-logo { text-align: center; margin-bottom: 16px; }
+        .footer-logo img { height: 16px; width: auto; opacity: 0.45; }
+        .footer-logo-text {
+            font-family: var(--font-title);
+            font-size: 13px; font-weight: 700;
+            color: var(--text-muted);
+            opacity: 0.45; letter-spacing: 1px;
+        }
+        .footer-social {
+            display: flex; justify-content: center; gap: 20px;
+            margin-bottom: 10px;
+        }
+        .footer-link {
+            display: flex; align-items: center; gap: 5px;
+            text-decoration: none;
+            font-family: var(--font-title);
+            font-size: 11px; font-weight: 500;
+            color: var(--text-muted);
+            transition: color 0.2s;
+        }
+        .footer-link:hover { color: var(--primary); }
+        .footer-link svg { width: 14px; height: 14px; }
+        .footer-copy {
+            font-family: var(--font-title);
+            font-size: 10px; color: var(--text-muted);
+            opacity: 0.5; letter-spacing: 0.5px;
+            margin-top: 4px;
+        }
+
+        /* ═══════════════════════════════════════════
+           BOTTOM BAR
+        ═══════════════════════════════════════════ */
+        .bottom-bar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--navy), var(--primary), var(--accent));
+            z-index: 50;
+        }
+
+        /* ═══════════════════════════════════════════
+           RESPONSIVE
+        ═══════════════════════════════════════════ */
+        @media (max-width: 420px) {
+            .hero-title { font-size: 22px; }
+            .answer-letter { width: 30px; height: 30px; font-size: 17px; }
+            .answer-text { font-size: 14px; }
         }
         @media (min-width: 768px) {
-            :root { --font-size-base: 18px; }
-            .section-title { font-size: 30px; } .answer-text { font-size: 17px; }
-            .tip-text { font-size: 17px; } .bib-item-text { font-size: 14px; }
+            :root { --font-size-base: 17px; }
+            .answer-text { font-size: 16px; }
+            .tip-text { font-size: 17px; }
+            .bib-ref { font-size: 14px; }
         }
     </style>
 </head>
 <body>
-    <svg class="constellation" style="top:60px;right:12px;width:80px;height:70px;transform:rotate(12deg);" viewBox="0 0 80 70"><circle cx="15" cy="12" r="2" fill="#159F92" opacity="0.3"/><circle cx="45" cy="22" r="1.5" fill="#18828c" opacity="0.25"/><circle cx="65" cy="55" r="2" fill="#3ebdac" opacity="0.3"/><line x1="15" y1="12" x2="45" y2="22" stroke="#159F92" stroke-width="0.5" opacity="0.2"/><line x1="45" y1="22" x2="65" y2="55" stroke="#18828c" stroke-width="0.5" opacity="0.2"/></svg>
-    <svg class="constellation" style="top:250px;left:2px;width:70px;height:65px;transform:rotate(-20deg);" viewBox="0 0 70 65"><circle cx="12" cy="10" r="2" fill="#1e3a5f" opacity="0.2"/><circle cx="40" cy="25" r="1.5" fill="#18828c" opacity="0.25"/><circle cx="55" cy="50" r="2" fill="#159F92" opacity="0.25"/><line x1="12" y1="10" x2="40" y2="25" stroke="#1e3a5f" stroke-width="0.5" opacity="0.15"/><line x1="40" y1="25" x2="55" y2="50" stroke="#18828c" stroke-width="0.5" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:520px;right:10px;width:85px;height:75px;transform:rotate(35deg);" viewBox="0 0 85 75"><circle cx="20" cy="15" r="2" fill="#3ebdac" opacity="0.25"/><circle cx="55" cy="28" r="2" fill="#18828c" opacity="0.3"/><circle cx="70" cy="60" r="2" fill="#159F92" opacity="0.25"/><line x1="20" y1="15" x2="55" y2="28" stroke="#3ebdac" stroke-width="0.5" opacity="0.2"/><line x1="55" y1="28" x2="70" y2="60" stroke="#18828c" stroke-width="0.5" opacity="0.2"/></svg>
-    <svg class="constellation" style="top:800px;left:5px;width:70px;height:65px;transform:rotate(50deg);" viewBox="0 0 70 65"><circle cx="15" cy="10" r="2" fill="#18828c" opacity="0.25"/><circle cx="45" cy="28" r="2" fill="#6b4c7f" opacity="0.2"/><circle cx="55" cy="52" r="1.5" fill="#159F92" opacity="0.25"/><line x1="15" y1="10" x2="45" y2="28" stroke="#18828c" stroke-width="0.5" opacity="0.2"/><line x1="45" y1="28" x2="55" y2="52" stroke="#6b4c7f" stroke-width="0.5" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:1050px;right:15px;width:80px;height:70px;transform:rotate(-15deg);" viewBox="0 0 80 70"><circle cx="15" cy="10" r="2" fill="#159F92" opacity="0.25"/><circle cx="50" cy="20" r="2" fill="#cabc90" opacity="0.25"/><circle cx="65" cy="50" r="2" fill="#18828c" opacity="0.3"/><line x1="15" y1="10" x2="50" y2="20" stroke="#159F92" stroke-width="0.5" opacity="0.15"/><line x1="50" y1="20" x2="65" y2="50" stroke="#cabc90" stroke-width="0.5" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:1350px;left:8px;width:65px;height:55px;transform:rotate(25deg);" viewBox="0 0 65 55"><circle cx="10" cy="8" r="1.5" fill="#cabc90" opacity="0.25"/><circle cx="35" cy="20" r="2" fill="#18828c" opacity="0.25"/><circle cx="50" cy="42" r="2" fill="#159F92" opacity="0.25"/><line x1="10" y1="8" x2="35" y2="20" stroke="#cabc90" stroke-width="0.5" opacity="0.2"/><line x1="35" y1="20" x2="50" y2="42" stroke="#18828c" stroke-width="0.5" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:1600px;right:18px;width:75px;height:65px;transform:rotate(-40deg);" viewBox="0 0 75 65"><circle cx="12" cy="10" r="2" fill="#18828c" opacity="0.25"/><circle cx="45" cy="22" r="2" fill="#3ebdac" opacity="0.25"/><circle cx="60" cy="50" r="2" fill="#159F92" opacity="0.3"/><line x1="12" y1="10" x2="45" y2="22" stroke="#18828c" stroke-width="0.5" opacity="0.2"/><line x1="45" y1="22" x2="60" y2="50" stroke="#3ebdac" stroke-width="0.5" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:150px;left:50%;width:60px;height:55px;transform:rotate(45deg);" viewBox="0 0 60 55"><circle cx="10" cy="8" r="1.5" fill="#6b4c7f" opacity="0.2"/><circle cx="35" cy="18" r="2" fill="#159F92" opacity="0.2"/><circle cx="50" cy="42" r="1.5" fill="#cabc90" opacity="0.25"/><line x1="10" y1="8" x2="35" y2="18" stroke="#6b4c7f" stroke-width="0.5" opacity="0.15"/><line x1="35" y1="18" x2="50" y2="42" stroke="#159F92" stroke-width="0.5" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:400px;right:30px;width:55px;height:50px;transform:rotate(-8deg);" viewBox="0 0 55 50"><circle cx="8" cy="12" r="1.5" fill="#18828c" opacity="0.2"/><circle cx="30" cy="8" r="2" fill="#cabc90" opacity="0.2"/><circle cx="45" cy="35" r="1.5" fill="#3ebdac" opacity="0.25"/><circle cx="18" cy="40" r="1.5" fill="#1e3a5f" opacity="0.2"/><line x1="8" y1="12" x2="30" y2="8" stroke="#18828c" stroke-width="0.4" opacity="0.15"/><line x1="30" y1="8" x2="45" y2="35" stroke="#cabc90" stroke-width="0.4" opacity="0.15"/><line x1="45" y1="35" x2="18" y2="40" stroke="#3ebdac" stroke-width="0.4" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:680px;left:40%;width:70px;height:60px;transform:rotate(18deg);" viewBox="0 0 70 60"><circle cx="10" cy="15" r="2" fill="#159F92" opacity="0.2"/><circle cx="40" cy="8" r="1.5" fill="#1e3a5f" opacity="0.2"/><circle cx="58" cy="38" r="2" fill="#6b4c7f" opacity="0.2"/><line x1="10" y1="15" x2="40" y2="8" stroke="#159F92" stroke-width="0.5" opacity="0.15"/><line x1="40" y1="8" x2="58" y2="38" stroke="#1e3a5f" stroke-width="0.5" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:950px;right:5px;width:60px;height:50px;transform:rotate(-30deg);" viewBox="0 0 60 50"><circle cx="12" cy="8" r="1.5" fill="#cabc90" opacity="0.22"/><circle cx="40" cy="15" r="2" fill="#18828c" opacity="0.22"/><circle cx="48" cy="40" r="1.5" fill="#3ebdac" opacity="0.2"/><line x1="12" y1="8" x2="40" y2="15" stroke="#cabc90" stroke-width="0.4" opacity="0.15"/><line x1="40" y1="15" x2="48" y2="40" stroke="#18828c" stroke-width="0.4" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:1200px;left:45%;width:55px;height:50px;transform:rotate(60deg);" viewBox="0 0 55 50"><circle cx="8" cy="10" r="1.5" fill="#3ebdac" opacity="0.2"/><circle cx="30" cy="5" r="1.5" fill="#159F92" opacity="0.22"/><circle cx="45" cy="30" r="2" fill="#1e3a5f" opacity="0.2"/><line x1="8" y1="10" x2="30" y2="5" stroke="#3ebdac" stroke-width="0.4" opacity="0.15"/><line x1="30" y1="5" x2="45" y2="30" stroke="#159F92" stroke-width="0.4" opacity="0.15"/></svg>
-    <svg class="constellation" style="top:1450px;right:25px;width:65px;height:55px;transform:rotate(10deg);" viewBox="0 0 65 55"><circle cx="10" cy="12" r="2" fill="#6b4c7f" opacity="0.2"/><circle cx="38" cy="6" r="1.5" fill="#cabc90" opacity="0.2"/><circle cx="55" cy="35" r="2" fill="#18828c" opacity="0.22"/><line x1="10" y1="12" x2="38" y2="6" stroke="#6b4c7f" stroke-width="0.4" opacity="0.15"/><line x1="38" y1="6" x2="55" y2="35" stroke="#cabc90" stroke-width="0.4" opacity="0.15"/></svg>
-    <!-- Extra constellations: near answer card area -->
-    <svg class="constellation" style="top:90px;left:8px;width:50px;height:45px;transform:rotate(-5deg);" viewBox="0 0 50 45"><circle cx="8" cy="10" r="1.5" fill="#159F92" opacity="0.2"/><circle cx="28" cy="5" r="1" fill="#3ebdac" opacity="0.18"/><circle cx="42" cy="30" r="1.5" fill="#18828c" opacity="0.22"/><line x1="8" y1="10" x2="28" y2="5" stroke="#159F92" stroke-width="0.4" opacity="0.12"/><line x1="28" y1="5" x2="42" y2="30" stroke="#3ebdac" stroke-width="0.4" opacity="0.12"/></svg>
-    <svg class="constellation" style="top:180px;right:8px;width:55px;height:50px;transform:rotate(22deg);" viewBox="0 0 55 50"><circle cx="10" cy="8" r="1.5" fill="#1e3a5f" opacity="0.18"/><circle cx="35" cy="15" r="1" fill="#159F92" opacity="0.2"/><circle cx="48" cy="38" r="1.5" fill="#cabc90" opacity="0.2"/><circle cx="20" cy="42" r="1" fill="#3ebdac" opacity="0.15"/><line x1="10" y1="8" x2="35" y2="15" stroke="#1e3a5f" stroke-width="0.4" opacity="0.12"/><line x1="35" y1="15" x2="48" y2="38" stroke="#159F92" stroke-width="0.4" opacity="0.12"/><line x1="48" y1="38" x2="20" y2="42" stroke="#cabc90" stroke-width="0.3" opacity="0.1"/></svg>
-    <svg class="constellation" style="top:340px;left:60%;width:45px;height:40px;transform:rotate(-28deg);" viewBox="0 0 45 40"><circle cx="5" cy="12" r="1.5" fill="#18828c" opacity="0.2"/><circle cx="25" cy="5" r="1" fill="#6b4c7f" opacity="0.18"/><circle cx="38" cy="28" r="1.5" fill="#159F92" opacity="0.2"/><line x1="5" y1="12" x2="25" y2="5" stroke="#18828c" stroke-width="0.4" opacity="0.12"/><line x1="25" y1="5" x2="38" y2="28" stroke="#6b4c7f" stroke-width="0.4" opacity="0.12"/></svg>
-    <!-- Fill gaps between sections -->
-    <svg class="constellation" style="top:450px;left:4px;width:50px;height:45px;transform:rotate(40deg);" viewBox="0 0 50 45"><circle cx="8" cy="8" r="1.5" fill="#3ebdac" opacity="0.2"/><circle cx="30" cy="20" r="1" fill="#1e3a5f" opacity="0.18"/><circle cx="42" cy="38" r="1.5" fill="#cabc90" opacity="0.2"/><line x1="8" y1="8" x2="30" y2="20" stroke="#3ebdac" stroke-width="0.4" opacity="0.12"/><line x1="30" y1="20" x2="42" y2="38" stroke="#1e3a5f" stroke-width="0.4" opacity="0.12"/></svg>
-    <svg class="constellation" style="top:600px;right:6px;width:48px;height:42px;transform:rotate(-12deg);" viewBox="0 0 48 42"><circle cx="6" cy="10" r="1" fill="#159F92" opacity="0.2"/><circle cx="25" cy="4" r="1.5" fill="#18828c" opacity="0.18"/><circle cx="40" cy="32" r="1" fill="#6b4c7f" opacity="0.2"/><line x1="6" y1="10" x2="25" y2="4" stroke="#159F92" stroke-width="0.3" opacity="0.12"/><line x1="25" y1="4" x2="40" y2="32" stroke="#18828c" stroke-width="0.3" opacity="0.12"/></svg>
-    <svg class="constellation" style="top:750px;left:55%;width:55px;height:48px;transform:rotate(55deg);" viewBox="0 0 55 48"><circle cx="10" cy="6" r="1.5" fill="#cabc90" opacity="0.18"/><circle cx="30" cy="22" r="1" fill="#159F92" opacity="0.2"/><circle cx="48" cy="40" r="1.5" fill="#18828c" opacity="0.22"/><line x1="10" y1="6" x2="30" y2="22" stroke="#cabc90" stroke-width="0.4" opacity="0.12"/><line x1="30" y1="22" x2="48" y2="40" stroke="#159F92" stroke-width="0.4" opacity="0.12"/></svg>
-    <svg class="constellation" style="top:900px;left:3px;width:45px;height:40px;transform:rotate(-38deg);" viewBox="0 0 45 40"><circle cx="8" cy="6" r="1" fill="#1e3a5f" opacity="0.18"/><circle cx="28" cy="18" r="1.5" fill="#3ebdac" opacity="0.2"/><circle cx="38" cy="35" r="1" fill="#159F92" opacity="0.18"/><line x1="8" y1="6" x2="28" y2="18" stroke="#1e3a5f" stroke-width="0.3" opacity="0.1"/><line x1="28" y1="18" x2="38" y2="35" stroke="#3ebdac" stroke-width="0.3" opacity="0.1"/></svg>
-    <svg class="constellation" style="top:1100px;left:8px;width:50px;height:45px;transform:rotate(15deg);" viewBox="0 0 50 45"><circle cx="5" cy="10" r="1.5" fill="#6b4c7f" opacity="0.18"/><circle cx="28" cy="8" r="1" fill="#18828c" opacity="0.2"/><circle cx="42" cy="35" r="1.5" fill="#3ebdac" opacity="0.2"/><line x1="5" y1="10" x2="28" y2="8" stroke="#6b4c7f" stroke-width="0.3" opacity="0.12"/><line x1="28" y1="8" x2="42" y2="35" stroke="#18828c" stroke-width="0.3" opacity="0.12"/></svg>
-    <svg class="constellation" style="top:1300px;right:8px;width:48px;height:42px;transform:rotate(-50deg);" viewBox="0 0 48 42"><circle cx="8" cy="6" r="1" fill="#159F92" opacity="0.2"/><circle cx="30" cy="15" r="1.5" fill="#cabc90" opacity="0.18"/><circle cx="42" cy="36" r="1" fill="#1e3a5f" opacity="0.2"/><line x1="8" y1="6" x2="30" y2="15" stroke="#159F92" stroke-width="0.3" opacity="0.12"/><line x1="30" y1="15" x2="42" y2="36" stroke="#cabc90" stroke-width="0.3" opacity="0.12"/></svg>
-    <svg class="constellation" style="top:1500px;left:48%;width:52px;height:45px;transform:rotate(32deg);" viewBox="0 0 52 45"><circle cx="6" cy="12" r="1" fill="#18828c" opacity="0.18"/><circle cx="28" cy="5" r="1.5" fill="#6b4c7f" opacity="0.18"/><circle cx="45" cy="30" r="1" fill="#3ebdac" opacity="0.2"/><line x1="6" y1="12" x2="28" y2="5" stroke="#18828c" stroke-width="0.3" opacity="0.1"/><line x1="28" y1="5" x2="45" y2="30" stroke="#6b4c7f" stroke-width="0.3" opacity="0.1"/></svg>
-    <!-- Deep content area constellations -->
-    <svg class="constellation" style="top:1700px;left:5px;width:55px;height:48px;transform:rotate(-22deg);" viewBox="0 0 55 48"><circle cx="8" cy="10" r="1.5" fill="#159F92" opacity="0.2"/><circle cx="32" cy="6" r="1" fill="#1e3a5f" opacity="0.18"/><circle cx="48" cy="38" r="1.5" fill="#cabc90" opacity="0.2"/><line x1="8" y1="10" x2="32" y2="6" stroke="#159F92" stroke-width="0.4" opacity="0.12"/><line x1="32" y1="6" x2="48" y2="38" stroke="#1e3a5f" stroke-width="0.4" opacity="0.12"/></svg>
-    <svg class="constellation" style="top:1850px;right:10px;width:50px;height:45px;transform:rotate(42deg);" viewBox="0 0 50 45"><circle cx="6" cy="8" r="1" fill="#3ebdac" opacity="0.18"/><circle cx="28" cy="20" r="1.5" fill="#18828c" opacity="0.2"/><circle cx="44" cy="38" r="1" fill="#6b4c7f" opacity="0.18"/><line x1="6" y1="8" x2="28" y2="20" stroke="#3ebdac" stroke-width="0.3" opacity="0.1"/><line x1="28" y1="20" x2="44" y2="38" stroke="#18828c" stroke-width="0.3" opacity="0.1"/></svg>
-    <svg class="constellation" style="top:2000px;left:45%;width:48px;height:42px;transform:rotate(-35deg);" viewBox="0 0 48 42"><circle cx="5" cy="8" r="1.5" fill="#cabc90" opacity="0.18"/><circle cx="25" cy="18" r="1" fill="#159F92" opacity="0.2"/><circle cx="42" cy="35" r="1.5" fill="#1e3a5f" opacity="0.18"/><line x1="5" y1="8" x2="25" y2="18" stroke="#cabc90" stroke-width="0.3" opacity="0.1"/><line x1="25" y1="18" x2="42" y2="35" stroke="#159F92" stroke-width="0.3" opacity="0.1"/></svg>
-
-    <div class="app-container" id="appContainer">
+    <div class="app" id="appContainer">
         <div id="content">
             <div class="loading-container">
                 <div class="spinner"></div>
@@ -177,7 +423,7 @@
             </div>
         </div>
     </div>
-    <div class="bottom-accent"></div>
+    <div class="bottom-bar"></div>
 
     <script>
         let tg = null;
@@ -191,8 +437,28 @@
         document.addEventListener('touchstart', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
         const contentDiv = document.getElementById('content');
-        const dotColors = ['var(--teal)','var(--teal-light)','var(--navy)','var(--purple)','var(--beige)','var(--teal-primary)'];
 
+        // ─── Motivational phrases ───
+        const phrases = [
+            { text: "El médico que solo sabe de medicina, ni de medicina sabe.", author: "Letamendi" },
+            { text: "La medicina es la ciencia de la incertidumbre y el arte de la probabilidad.", author: "William Osler" },
+            { text: "Donde quiera que se ama el arte de la medicina, se ama también a la humanidad.", author: "Platón" },
+            { text: "El buen médico trata la enfermedad; el gran médico trata al paciente que tiene la enfermedad.", author: "William Osler" },
+            { text: "La medicina no solo cura, también enseña a vivir.", author: "Anónimo" },
+            { text: "La paciencia es la mejor medicina.", author: "John Florio" },
+            { text: "La observación indica cómo es el paciente; la reflexión indica qué hacer; la destreza indica cómo actuar.", author: "Hipócrates" },
+            { text: "El acto médico es un acto de amor.", author: "Gregorio Marañón" },
+            { text: "El médico competente, antes de dar una medicina, primero diagnostica la enfermedad.", author: "Cicerón" },
+            { text: "La función del médico es entretener al paciente mientras la naturaleza cura la enfermedad.", author: "Voltaire" },
+            { text: "Estudia, porque el día menos pensado alguien dependerá de lo que tú sabes.", author: "Anónimo" },
+            { text: "La excelencia no es un acto, sino un hábito.", author: "Aristóteles" },
+            { text: "El éxito en medicina se construye caso a caso, día a día.", author: "Anónimo" },
+            { text: "Cada paciente que atiendes es un libro que te enseña algo nuevo.", author: "Anónimo" },
+            { text: "No estudies para aprobar. Estudia para saber. Y cuando sepas, no podrás reprobar.", author: "Anónimo" }
+        ];
+        function getPhrase() { return phrases[Math.floor(Math.random() * phrases.length)]; }
+
+        // ─── Utility functions ───
         function stripBibPrefix(t) { return t.replace(/^\s*(\d+[\.\)\-\]]\s*|\[\d+\]\s*|-\s*|•\s*|–\s*|►\s*|>\s*)/,'').trim(); }
 
         function parseBibliography(bib) {
@@ -211,9 +477,9 @@
 
         function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+        // ─── Load case from Supabase ───
         async function loadCase() {
             try {
-                // Read case ID from URL param (?case=) or Telegram startapp param
                 let caseId = new URLSearchParams(window.location.search).get('case');
                 if (!caseId && tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
                     caseId = tg.initDataUnsafe.start_param;
@@ -233,41 +499,51 @@
             } catch(e) { console.error(e); showError('Error cargando el caso clínico'); }
         }
 
+        // ─── Render case with new design ───
         function renderCase(d) {
-            let h = '';
-            h += '<div class="header"><div class="header-emoji">🎓</div><div><div class="header-brand"><img class="header-brand-img" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo.png?v=2" alt="ACAMEDICS" onerror="this.style.display=\'none\';this.parentNode.textContent=\'ACAMEDICS\';"></div><div class="header-bars"><span></span><span></span><span></span></div></div><div class="header-right"><button class="font-cycle-btn" id="fontCycle">Aa</button></div></div>';
+            const phrase = getPhrase();
+            const caseNum = d.id || d.case_number || '';
+            let html = '';
+
+            // ── HEADER ──
+            html += '<div class="header">';
+            html += '<div class="header-left">';
+            html += '<img class="header-logo" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo.png?v=2" alt="ACAMEDICS" onerror="this.style.display=\'none\';this.parentNode.insertAdjacentHTML(\'afterbegin\',\'<span style=font-family:var(--font-title);font-weight:700;font-size:14px;color:var(--navy)>ACAMEDICS</span>\');">';
+            html += '<div class="header-divider"></div>';
+            html += '<span class="header-case">Caso #'+esc(String(caseNum))+'</span>';
+            html += '</div></div>';
+
+            // ── PRIMARY DIVIDER ──
+            html += '<div class="divider--primary"></div>';
+
+            // ── HERO: title + answer ──
+            html += '<div class="hero">';
+            html += '<div class="eyebrow-row">';
+            html += '<h2 class="hero-title">Análisis y Fundamentación<br>del Caso Clínico</h2>';
+            html += '<button class="font-btn" id="fontCycle">Aa</button>';
+            html += '</div>';
             if (d.correct_letter && d.correct_text) {
-                h += '<div class="answer-card"><div class="answer-label">CORRECTA:</div><div class="answer-text">'+esc(d.correct_letter.toUpperCase())+'. '+esc(d.correct_text)+'</div>';
-                h += '<div class="answer-color-strip"><span></span><span></span><span></span><span></span><span></span></div></div>';
+                html += '<div class="answer-strip">';
+                html += '<div class="answer-letter">'+esc(d.correct_letter.toUpperCase())+'</div>';
+                html += '<div class="answer-text">'+esc(d.correct_text)+'</div>';
+                html += '</div>';
             }
-            h += '<div class="section-title">Análisis y Fundamentación del Caso Clínico</div>';
+            html += '</div>';
+
+            // ── DIVIDER ──
+            html += '<div class="divider"></div>';
+
+            // ── JUSTIFICATION ──
             if (d.justification) {
-                h += '<div class="justification-wrap"><div class="justification" id="justText">';
-                // Pre-process: join lines that start with "option letter)" pattern
-                // when preceded by text like "(opción" - these are NOT real options,
-                // just references to options within justification text
+                html += '<div class="justification-section">';
+                html += '<div class="justification" id="justText">';
+
                 let justText = d.justification;
-                // --- Fix option-letter references in justification text ---
-                // The justification text often references options like "opción C)",
-                // "(C)", "opción D.", "la B)", "respuesta C)" etc.
-                // When these get split across lines, they create false bullet points.
-
-                // Rule 1: merge lines where prev line ends with context word + letter ref on next line
-                // Covers: "opción\nC) es...", "(opción \nD) es...", "(\nC) es..."
-                // Also: "la\nC)", "respuesta\nB)", etc.
+                // Fix option-letter references in justification text
                 justText = justText.replace(/((?:opci[oó]n|respuesta|alternativa|inciso|literal|la|el|\()\s*)\n\s*([A-Fa-f][.),:]\s*)/gi, '$1$2');
-
-                // Rule 2: Any line starting with a SINGLE letter + ) or . followed by LOWERCASE
-                // is a continuation, not a real option
-                // "C) es el tratamiento" = continuation (lowercase after)
-                // "C) Fórmula Terapéutica" = real option (uppercase after - won't match)
                 justText = justText.replace(/\n\s*([A-Fa-f][.)]\s+[a-záéíóúñ])/g, ' $1');
-
-                // Rule 3: Lines that are ONLY a letter reference like "C)" or "(C)" with no text
-                // merge with next line
                 justText = justText.replace(/\n\s*(\(?[A-Fa-f][.)]\)?)\s*\n/g, ' $1 ');
 
-                // Split paragraphs: double newline OR single newline
                 const hasDoubleNL = /\n\s*\n/.test(justText);
                 let paras;
                 if (hasDoubleNL) {
@@ -277,74 +553,137 @@
                 }
                 paras.forEach(p => {
                     const merged = p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
-                    h += '<p>'+esc(merged)+'</p>';
+                    html += '<p>'+esc(merged)+'</p>';
                 });
-                h += '</div></div>';
+                html += '</div></div>';
             }
+
+            // ── TIP SECTION (full-bleed) ──
             if (d.tip) {
-                h += '<div class="tip-section"><div class="tip-header"><div class="tip-icon">💡</div><div class="tip-label">Tip Acamédico</div></div>';
-                h += '<div class="tip-bars"><span></span><span></span><span></span></div>';
-                h += '<div class="tip-content-box"><div class="tip-text">'+esc(d.tip)+'</div></div></div>';
+                html += '<div class="tip-section">';
+                html += '<div class="tip-accent-bar"></div>';
+                html += '<div class="tip-inner">';
+                html += '<div class="tip-header">';
+                html += '<div class="tip-icon">💡</div>';
+                html += '<span class="tip-label">Tip <span class="tip-label-accent">ACAMÉDICO</span></span>';
+                html += '</div>';
+                html += '<div class="tip-text">'+esc(d.tip)+'</div>';
+                html += '</div></div>';
             }
+
+            // ── IMAGES ACCORDION ──
             const caseImages = Array.isArray(d.images) ? d.images : [];
             if (caseImages.length) {
-                h += '<div class="img-accordion open" id="imgAccordion">';
-                h += '<button class="bib-toggle" id="imgToggle"><div class="bib-toggle-left"><div class="bib-toggle-dot" style="background:var(--purple)"></div><span class="bib-toggle-text">Recurso Adicional</span><span class="bib-toggle-count">'+caseImages.length+'</span></div><svg class="bib-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button>';
-                h += '<div class="img-content">';
-                caseImages.forEach((url,i) => { if(url && typeof url === 'string') h += '<img src="'+esc(url)+'" alt="Recurso '+(i+1)+'" loading="lazy" data-full="'+esc(url)+'">'; });
-                h += '</div></div>';
+                html += '<div class="img-accordion open" id="imgAccordion">';
+                html += '<button class="img-toggle" id="imgToggle">';
+                html += '<div class="img-toggle-left">';
+                html += '<div class="img-toggle-icon">🖼️</div>';
+                html += '<span class="img-toggle-text">Recurso Adicional</span>';
+                html += '<span class="img-toggle-count">'+caseImages.length+'</span>';
+                html += '</div>';
+                html += '<svg class="img-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+                html += '</button>';
+                html += '<div class="img-content">';
+                caseImages.forEach((url,i) => {
+                    if(url && typeof url === 'string')
+                        html += '<img src="'+esc(url)+'" alt="Recurso '+(i+1)+'" loading="lazy" data-full="'+esc(url)+'">';
+                });
+                html += '</div></div>';
             }
+
+            // ── BIBLIOGRAPHY ACCORDION ──
             const bibRefs = parseBibliography(d.bibliography);
             if (bibRefs.length > 0) {
-                h += '<div class="bib-accordion" id="bibAccordion"><button class="bib-toggle" id="bibToggle"><div class="bib-toggle-left"><div class="bib-toggle-dot"></div><span class="bib-toggle-text">Referencias Bibliográficas</span><span class="bib-toggle-count">'+bibRefs.length+'</span></div><svg class="bib-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></button><div class="bib-content"><div class="bib-grid">';
-                bibRefs.forEach((r,i) => { h += '<div class="bib-item"><div class="bib-dot" style="background:'+dotColors[i%dotColors.length]+'"></div><div class="bib-item-text">'+esc(stripBibPrefix(r))+'</div></div>'; });
-                h += '</div></div></div>';
+                html += '<div class="bib-section" id="bibSection">';
+                html += '<button class="bib-toggle" id="bibToggle">';
+                html += '<div class="bib-toggle-left">';
+                html += '<div class="bib-toggle-num">'+bibRefs.length+'</div>';
+                html += '<span class="bib-toggle-text">Referencias bibliográficas</span>';
+                html += '</div>';
+                html += '<svg class="bib-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+                html += '</button>';
+                html += '<div class="bib-content"><div class="bib-list">';
+                bibRefs.forEach((r,i) => {
+                    html += '<div class="bib-item">';
+                    html += '<span class="bib-num">'+(i+1)+'.</span>';
+                    html += '<span class="bib-ref">'+esc(stripBibPrefix(r))+'</span>';
+                    html += '</div>';
+                });
+                html += '</div></div></div>';
             }
-            h += '<div class="footer"><div class="footer-social">';
-            h += '<a href="https://instagram.com/acamedics.co" target="_blank" rel="noopener" class="footer-item"><svg viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" stroke="#18828c" stroke-width="1.5"/><circle cx="12" cy="12" r="4.5" stroke="#18828c" stroke-width="1.5"/><circle cx="17.5" cy="6.5" r="1.2" fill="#18828c"/></svg>@acamedics.co</a>';
-            h += '<a href="#" id="tgScrollTop" class="footer-item"><svg viewBox="0 0 24 24" fill="none"><path d="M21.2 4.3L2.4 10.5c-.6.2-.6 1.1 0 1.3l4.5 1.7 1.7 5.5c.2.5.8.7 1.2.4l2.5-2 4.3 3.2c.5.4 1.2.1 1.3-.5L21.8 5.2c.2-.7-.3-1.2-.6-.9z" stroke="#18828c" stroke-width="1.3" stroke-linejoin="round"/><path d="M8.9 13.5l9.3-7.2" stroke="#18828c" stroke-width="1" opacity="0.5"/></svg>acamedics_co</a>';
-            h += '</div><div class="footer-copy">&copy; ' + new Date().getFullYear() + ' ACAMEDICS. Todos los derechos reservados.</div></div>';
-            // Lightbox for full-screen image viewing
-            h += '<div class="lightbox" id="lightbox"><button class="lightbox-close" id="lightboxClose">&times;</button><img id="lightboxImg" src="" alt=""><div class="lightbox-hint">Toca para cerrar</div></div>';
-            contentDiv.innerHTML = h;
+
+            // ── FOOTER ──
+            html += '<div class="footer">';
+            // Motivational phrase
+            html += '<div class="motivation">';
+            html += '<span class="motivation-icon">✨</span>';
+            html += '<span class="motivation-text">"'+esc(phrase.text)+'" — '+esc(phrase.author)+'</span>';
+            html += '</div>';
+            // Logo
+            html += '<div class="footer-logo">';
+            html += '<img src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo.png?v=2" alt="ACAMEDICS" onerror="this.outerHTML=\'<span class=footer-logo-text>ACAMEDICS</span>\';">';
+            html += '</div>';
+            // Social
+            html += '<div class="footer-social">';
+            html += '<a href="https://instagram.com/acamedics.co" target="_blank" rel="noopener" class="footer-link">';
+            html += '<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.5"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>';
+            html += '@acamedics.co</a>';
+            html += '<a href="#" class="footer-link" id="tgScrollTop">';
+            html += '<svg viewBox="0 0 24 24" fill="none"><path d="M21.2 4.3L2.4 10.5c-.6.2-.6 1.1 0 1.3l4.5 1.7 1.7 5.5c.2.5.8.7 1.2.4l2.5-2 4.3 3.2c.5.4 1.2.1 1.3-.5L21.8 5.2c.2-.7-.3-1.2-.6-.9z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+            html += '@acamedics_co</a>';
+            html += '</div>';
+            // Copyright
+            html += '<div class="footer-copy">&copy; '+new Date().getFullYear()+' ACAMEDICS. Todos los derechos reservados.</div>';
+            html += '</div>';
+
+            // ── LIGHTBOX ──
+            html += '<div class="lightbox" id="lightbox"><button class="lightbox-close" id="lightboxClose">&times;</button><img id="lightboxImg" src="" alt=""><div class="lightbox-hint">Toca para cerrar</div></div>';
+
+            contentDiv.innerHTML = html;
+
+            // ── Event listeners ──
             // Bibliography accordion
             const bt = document.getElementById('bibToggle');
-            if (bt) bt.addEventListener('click', () => document.getElementById('bibAccordion').classList.toggle('open'));
+            if (bt) bt.addEventListener('click', () => document.getElementById('bibSection').classList.toggle('open'));
+
             // Images accordion
             const it = document.getElementById('imgToggle');
             if (it) it.addEventListener('click', () => document.getElementById('imgAccordion').classList.toggle('open'));
-            // Lightbox: click image to open full screen
+
+            // Lightbox
             const lb = document.getElementById('lightbox');
             const lbImg = document.getElementById('lightboxImg');
             document.querySelectorAll('.img-content img').forEach(img => {
-                img.addEventListener('click', e => {
+                img.addEventListener('click', () => {
                     lbImg.src = img.getAttribute('data-full') || img.src;
                     lb.classList.add('active');
                 });
             });
-            // Close lightbox
             const closeLb = () => lb.classList.remove('active');
             document.getElementById('lightboxClose').addEventListener('click', closeLb);
             lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.contains('lightbox-hint')) closeLb(); });
-            // Telegram icon: smooth scroll to top of justification
+
+            // Telegram link: scroll to top
             const tgLink = document.getElementById('tgScrollTop');
             if (tgLink) tgLink.addEventListener('click', e => { e.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'}); });
-            const sizes = [0, 2, 4];
-            let sizeIdx = 0;
-            function applySize() {
-                const s = sizes[sizeIdx];
-                document.documentElement.style.setProperty('--font-size-base', (17 + s) + 'px');
-                document.querySelectorAll('.answer-text').forEach(el => el.style.fontSize = (16 + s) + 'px');
-                document.querySelectorAll('.tip-text').forEach(el => el.style.fontSize = (16 + s) + 'px');
-                document.querySelectorAll('.bib-item-text').forEach(el => el.style.fontSize = (13 + s * 0.6) + 'px');
-                const btn = document.getElementById('fontCycle');
-                if (btn) { btn.classList.toggle('active', sizeIdx > 0); }
-            }
+
+            // Font size cycle: [-2, 0, 2, 4]
+            const sizes = [-2, 0, 2, 4];
+            let sizeIdx = 1; // start at 0 offset (16px)
             const fc = document.getElementById('fontCycle');
-            if (fc) fc.addEventListener('click', e => { e.stopPropagation(); sizeIdx = (sizeIdx + 1) % sizes.length; applySize(); });
+            if (fc) fc.addEventListener('click', e => {
+                e.stopPropagation();
+                sizeIdx = (sizeIdx + 1) % sizes.length;
+                const newSize = 16 + sizes[sizeIdx];
+                document.documentElement.style.setProperty('--font-size-base', newSize + 'px');
+                fc.classList.toggle('active', sizeIdx !== 1);
+            });
         }
 
-        function showError(m) { contentDiv.innerHTML = '<div class="error-container"><div class="error-icon">⚠️</div><div class="error-text">'+m+'</div><button class="retry-btn" onclick="location.reload()">Reintentar</button></div>'; }
+        function showError(m) {
+            contentDiv.innerHTML = '<div class="error-container"><div class="error-icon">⚠️</div><div class="error-text">'+m+'</div><button class="retry-btn" onclick="location.reload()">Reintentar</button></div>';
+        }
+
         loadCase();
     </script>
 </body>
