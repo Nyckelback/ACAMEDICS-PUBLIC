@@ -508,6 +508,13 @@
         }
 
         function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+        function mdBold(s) {
+            // Convert **text** to <b>text</b> AFTER esc() so it's safe
+            // Also convert *text* (single) to <i>text</i> for italic
+            return s
+                .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+                .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
+        }
 
         // ─── Load case from Supabase ───
         async function loadCase() {
@@ -597,7 +604,7 @@
                 }
                 paras.forEach(p => {
                     const merged = p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
-                    html += '<p>'+esc(merged)+'</p>';
+                    html += '<p>'+mdBold(esc(merged))+'</p>';
                 });
                 html += '</div></div>';
             }
@@ -611,7 +618,7 @@
                 html += '<div class="tip-icon">💡</div>';
                 html += '<span class="tip-label">Tip <span class="tip-label-accent">ACAMÉDICO</span></span>';
                 html += '</div>';
-                html += '<div class="tip-text">'+esc(d.tip)+'</div>';
+                html += '<div class="tip-text">'+mdBold(esc(d.tip))+'</div>';
                 html += '</div></div>';
             }
 
