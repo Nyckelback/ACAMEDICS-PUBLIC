@@ -105,7 +105,7 @@ def _admin_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("Caso"), KeyboardButton("Preview")],
         [KeyboardButton("Publicar"), KeyboardButton("Cancelar")],
-        [KeyboardButton("Editar"), KeyboardButton("Editar Caso")],
+        [KeyboardButton("✏️ Editar Pendiente"), KeyboardButton("📝 Editar Publicado")],
         [KeyboardButton("Admin")],
     ]
     return ReplyKeyboardMarkup(
@@ -636,9 +636,55 @@ async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT
 
 
 async def waiting_images_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle unexpected text in WAITING_IMAGES state."""
+    """Handle text in WAITING_IMAGES state.
+    If the text looks like a continuation (e.g., split bibliography), append it to the case."""
     if not update.message:
         return STATE_WAITING_IMAGES
+
+    pending = context.user_data.get("pending_case")
+    if not pending:
+        await update.message.reply_text(
+            "⚠️ No hay caso cargado. Usa /caso para empezar."
+        )
+        return STATE_WAITING_IMAGES
+
+    raw_text = restore_formatting(update.message.text, update.message.entities).strip()
+
+    # Detect if this looks like a continuation (bibliography, reference, etc.)
+    # Heuristics: contains author-like patterns, DOI, year references, journal names, etc.
+    import re
+    is_continuation = False
+    # Check for bibliography-like patterns
+    bib_patterns = [
+        r'\d{4}[;:]\d+',           # Year;volume like 2022;20(4)
+        r'et\s*al',                 # et al.
+        r'doi[:\s]',               # DOI reference
+        r'PMID',                    # PubMed ID
+        r'ISBN',                    # Book ISBN
+        r'\b(?:J|Am|Br|Int|Eur|Ann|Arch|Clin)\b.*\b\d{4}\b',  # Journal + year
+        r'Publishing[;,.]',        # Publisher
+        r'Psychiatry|Medicine|Surgery|Lancet|BMJ|NEJM|JAMA',  # Journal names
+        r'^\w+\s\w+[,.].*\d{4}',   # Author Name. ... Year pattern
+    ]
+    for pat in bib_patterns:
+        if re.search(pat, raw_text, re.IGNORECASE):
+            is_continuation = True
+            break
+
+    if is_continuation:
+        # Append to bibliography
+        new_refs = [l.strip() for l in raw_text.split('\n') if l.strip()]
+        if "bibliography" not in pending:
+            pending["bibliography"] = []
+        pending["bibliography"].extend(new_refs)
+        bib_count = len(pending["bibliography"])
+
+        await update.message.reply_text(
+            f"📚 +{len(new_refs)} referencia(s) agregada(s) (total: {bib_count}).\n\n"
+            "📸 Fotos | 👁️ Preview | 📢 Publicar"
+        )
+        return STATE_WAITING_IMAGES
+
     await update.message.reply_text(
         "⚠️ Ya hay un caso cargado. Opciones:\n\n"
         "📸 Envía fotos para agregar imágenes\n"
@@ -787,7 +833,8 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
     text = update.message.text.strip()
 
     # Ignore known keyboard button texts (they're not case numbers)
-    _known_buttons = {"caso", "preview", "publicar", "cancelar", "editar", "editar caso", "admin"}
+    _known_buttons = {"caso", "preview", "publicar", "cancelar", "editar", "editar caso", "admin",
+                       "✏️ editar pendiente", "📝 editar publicado"}
     if text.lower() in _known_buttons:
         await update.message.reply_text(
             "⚠️ Estás en modo edición de caso publicado.\n"
@@ -871,7 +918,8 @@ async def edit_published_case_handler(update: Update, context: ContextTypes.DEFA
     raw_text_plain = update.message.text.strip()
 
     # Ignore known keyboard button texts
-    _known_buttons = {"caso", "preview", "publicar", "cancelar", "editar", "editar caso", "admin"}
+    _known_buttons = {"caso", "preview", "publicar", "cancelar", "editar", "editar caso", "admin",
+                       "✏️ editar pendiente", "📝 editar publicado"}
     if raw_text_plain.lower() in _known_buttons:
         await update.message.reply_text(
             "⚠️ Estás editando un caso publicado.\n"
@@ -1537,7 +1585,7 @@ def main() -> None:
         _BTN_PREVIEW = filters.Regex(r"(?i)^preview$") & ~filters.UpdateType.EDITED_MESSAGE
         _BTN_PUBLICAR = filters.Regex(r"(?i)^publicar$") & ~filters.UpdateType.EDITED_MESSAGE
         _BTN_CANCELAR = filters.Regex(r"(?i)^cancelar$") & ~filters.UpdateType.EDITED_MESSAGE
-        _BTN_EDITAR = filters.Regex(r"(?i)^editar$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_EDITAR = filters.Regex(r"(?i)^(editar|✏️\s*editar\s*pendiente)$") & ~filters.UpdateType.EDITED_MESSAGE
 
         # Case creation conversation
         case_conv = ConversationHandler(
@@ -1596,7 +1644,7 @@ def main() -> None:
         app.add_handler(case_conv)
 
         # Edit published case conversation
-        _BTN_EDITAR_CASO = filters.Regex(r"(?i)^editar\s*caso$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_EDITAR_CASO = filters.Regex(r"(?i)^(editar\s*caso|📝\s*editar\s*publicado)$") & ~filters.UpdateType.EDITED_MESSAGE
         edit_pub_conv = ConversationHandler(
             entry_points=[
                 CommandHandler("editar_caso", editar_caso_command),
