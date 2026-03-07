@@ -146,6 +146,7 @@
         .eyebrow-row .hero-title { margin-bottom: 0; }
 
         .ctrl-btns { display: flex; gap: 6px; flex-shrink: 0; }
+        button, .font-btn, .theme-btn { touch-action: manipulation; }
         .font-btn, .theme-btn {
             border: 1.5px solid var(--border); background: var(--bg);
             font-family: var(--font-title); font-size: 13px; font-weight: 500;
@@ -540,27 +541,56 @@
         document.addEventListener('contextmenu', e => e.preventDefault());
         document.addEventListener('selectstart', e => e.preventDefault());
         document.addEventListener('dragstart', e => e.preventDefault());
-        document.addEventListener('touchstart', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
         const contentDiv = document.getElementById('content');
 
+        // ─── Haptic feedback ───
+        function haptic(style) {
+            try {
+                if (tg && tg.HapticFeedback) {
+                    tg.HapticFeedback.impactOccurred(style || 'light');
+                    return;
+                }
+            } catch(e) {}
+            try { navigator.vibrate && navigator.vibrate(style === 'medium' ? 15 : 8); } catch(e) {}
+        }
+
         // ─── Motivational phrases ───
         const phrases = [
-            { text: "El médico que solo sabe de medicina, ni de medicina sabe.", author: "Letamendi" },
+            // ── Clásicos verificados ──
+            { text: "El médico que solo sabe de medicina, ni de medicina sabe.", author: "José de Letamendi" },
             { text: "La medicina es la ciencia de la incertidumbre y el arte de la probabilidad.", author: "William Osler" },
             { text: "Donde quiera que se ama el arte de la medicina, se ama también a la humanidad.", author: "Platón" },
             { text: "El buen médico trata la enfermedad; el gran médico trata al paciente que tiene la enfermedad.", author: "William Osler" },
-            { text: "La medicina no solo cura, también enseña a vivir.", author: "Anónimo" },
             { text: "La paciencia es la mejor medicina.", author: "John Florio" },
-            { text: "La observación indica cómo es el paciente; la reflexión indica qué hacer; la destreza indica cómo actuar.", author: "Hipócrates" },
             { text: "El acto médico es un acto de amor.", author: "Gregorio Marañón" },
             { text: "El médico competente, antes de dar una medicina, primero diagnostica la enfermedad.", author: "Cicerón" },
             { text: "La función del médico es entretener al paciente mientras la naturaleza cura la enfermedad.", author: "Voltaire" },
-            { text: "Estudia, porque el día menos pensado alguien dependerá de lo que tú sabes.", author: "Anónimo" },
             { text: "La excelencia no es un acto, sino un hábito.", author: "Aristóteles" },
-            { text: "El éxito en medicina se construye caso a caso, día a día.", author: "Anónimo" },
+            { text: "Curar a veces, aliviar con frecuencia, consolar siempre.", author: "Hipócrates" },
+            { text: "La vida es breve, el arte largo, la ocasión fugaz, la experiencia engañosa, el juicio difícil.", author: "Hipócrates" },
+            { text: "No hay enfermedades, sino enfermos.", author: "Gregorio Marañón" },
+            { text: "El secreto de la atención del paciente está en interesarse por el paciente.", author: "Francis Peabody" },
+            { text: "La medicina es una ciencia social, y la política no es más que medicina a gran escala.", author: "Rudolf Virchow" },
+            { text: "Escucha al paciente; él te está diciendo el diagnóstico.", author: "William Osler" },
+            { text: "El que estudia la medicina sin los libros navega sin brújula; pero el que la estudia sin pacientes no navega.", author: "William Osler" },
+            { text: "La primera obligación del médico es educar a las masas para que no necesiten de él.", author: "Santiago Ramón y Cajal" },
+            { text: "Todo hombre puede ser, si se lo propone, escultor de su propio cerebro.", author: "Santiago Ramón y Cajal" },
+            { text: "No hay hechos pequeños. Lo que llamamos pequeño es simplemente algo que no entendemos.", author: "Santiago Ramón y Cajal" },
+            { text: "La clínica es soberana.", author: "Aforismo médico" },
+            { text: "Primum non nocere: ante todo, no hacer daño.", author: "Principio hipocrático" },
+            { text: "Un médico que no tiene nada que hacer con su cabeza recurre a sus manos.", author: "Abraham Verghese" },
+            { text: "En nada se parece tanto el médico a Dios como en el deseo de ayudar al prójimo.", author: "Maimónides" },
+            { text: "Quien salva una vida, salva al mundo entero.", author: "Talmud" },
+            { text: "Los médicos no solo deben conocer la enfermedad, sino también al ser humano.", author: "Rudolf Virchow" },
+            { text: "La medicina no es solo una ciencia, es también un arte. No se trata solo de pastillas y pociones.", author: "Paracelso" },
+            { text: "El investigador sufre las decepciones, los largos meses pasados en una dirección equivocada, pero llega.", author: "Santiago Ramón y Cajal" },
+            { text: "Siempre que enseñes, enseña también a dudar de lo que enseñas.", author: "José Ortega y Gasset" },
+            // ── Motivacionales para el estudio ──
+            { text: "Estudia, porque el día menos pensado alguien dependerá de lo que tú sabes.", author: "Anónimo" },
+            { text: "No estudies para aprobar. Estudia para saber. Y cuando sepas, no podrás reprobar.", author: "Anónimo" },
             { text: "Cada paciente que atiendes es un libro que te enseña algo nuevo.", author: "Anónimo" },
-            { text: "No estudies para aprobar. Estudia para saber. Y cuando sepas, no podrás reprobar.", author: "Anónimo" }
+            { text: "El éxito en medicina se construye caso a caso, día a día.", author: "Anónimo" }
         ];
         function getPhrase() { return phrases[Math.floor(Math.random() * phrases.length)]; }
 
@@ -774,28 +804,29 @@
             // ── Event listeners ──
             // Bibliography accordion
             const bt = document.getElementById('bibToggle');
-            if (bt) bt.addEventListener('click', () => document.getElementById('bibSection').classList.toggle('open'));
+            if (bt) bt.addEventListener('click', () => { haptic('light'); document.getElementById('bibSection').classList.toggle('open'); });
 
             // Images accordion
             const it = document.getElementById('imgToggle');
-            if (it) it.addEventListener('click', () => document.getElementById('imgAccordion').classList.toggle('open'));
+            if (it) it.addEventListener('click', () => { haptic('light'); document.getElementById('imgAccordion').classList.toggle('open'); });
 
             // Lightbox
             const lb = document.getElementById('lightbox');
             const lbImg = document.getElementById('lightboxImg');
             document.querySelectorAll('.img-content img').forEach(img => {
                 img.addEventListener('click', () => {
+                    haptic('light');
                     lbImg.src = img.getAttribute('data-full') || img.src;
                     lb.classList.add('active');
                 });
             });
-            const closeLb = () => lb.classList.remove('active');
+            const closeLb = () => { haptic('light'); lb.classList.remove('active'); };
             document.getElementById('lightboxClose').addEventListener('click', closeLb);
             lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.contains('lightbox-hint')) closeLb(); });
 
             // Telegram link: scroll to top
             const tgLink = document.getElementById('tgScrollTop');
-            if (tgLink) tgLink.addEventListener('click', e => { e.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'}); });
+            if (tgLink) tgLink.addEventListener('click', e => { e.preventDefault(); haptic('light'); window.scrollTo({top: 0, behavior: 'smooth'}); });
 
             // Font size cycle: [-2, 0, 2, 4]
             const sizes = [-2, 0, 2, 4];
@@ -803,6 +834,7 @@
             const fc = document.getElementById('fontCycle');
             if (fc) fc.addEventListener('click', e => {
                 e.stopPropagation();
+                haptic('medium');
                 sizeIdx = (sizeIdx + 1) % sizes.length;
                 const newSize = 15 + sizes[sizeIdx];
                 document.documentElement.style.setProperty('--font-size-base', newSize + 'px');
@@ -813,6 +845,7 @@
             const tt = document.getElementById('themeToggle');
             if (tt) tt.addEventListener('click', e => {
                 e.stopPropagation();
+                haptic('medium');
                 savedTheme = getEffective() === 'dark' ? 'light' : 'dark';
                 try { localStorage.setItem('acamedics-theme', savedTheme); } catch(ex) {}
                 applyTheme(savedTheme);
@@ -825,6 +858,7 @@
             scrollBtn.classList.toggle('visible', window.scrollY > 400);
         }, { passive: true });
         scrollBtn.addEventListener('click', () => {
+            haptic('light');
             window.scrollTo({top: 0, behavior: 'smooth'});
         });
 
