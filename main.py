@@ -819,11 +819,11 @@ async def editar_caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return ConversationHandler.END
 
     await update.message.reply_text(
-        "✏️ **Editar caso publicado**\n\n"
+        "✏️ <b>Editar caso publicado</b>\n\n"
         "Envía el número del caso (el # que aparece en la Mini App).\n"
-        "Ejemplo: `2184`\n\n"
+        "Ejemplo: 2184\n\n"
         "O /cancelar para salir.",
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
     return STATE_EDIT_PUBLISHED_NUMBER
 
@@ -852,8 +852,7 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
         display_num = int(text)
     except ValueError:
         await update.message.reply_text(
-            "❌ Eso no es un número válido. Envía solo el número, ej: `2184`",
-            parse_mode="Markdown",
+            "❌ Eso no es un número válido. Envía solo el número, ej: 2184",
         )
         return STATE_EDIT_PUBLISHED_NUMBER
 
@@ -891,20 +890,22 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
         tip_preview = (case_data.get("tip") or "(sin tip)")[:100].replace('\n', ' ')
         bib_count = len(case_data.get("bibliography") or [])
 
+        # Use HTML to avoid Markdown issues with special chars in case text
+        from html import escape as html_esc
         await update.message.reply_text(
-            f"📋 **Caso #{display_num}** encontrado\n"
+            f"📋 <b>Caso #{display_num}</b> encontrado\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📝 Viñeta: {vig_preview}...\n\n"
+            f"📝 Viñeta: {html_esc(vig_preview)}...\n\n"
             f"✅ Correcta: {case_data.get('correct_letter', '?')}\n\n"
-            f"📖 Justificación: {just_preview}...\n\n"
-            f"💡 Tip: {tip_preview}\n\n"
+            f"📖 Justificación: {html_esc(just_preview)}...\n\n"
+            f"💡 Tip: {html_esc(tip_preview)}\n\n"
             f"📚 Bibliografía: {bib_count} refs\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Ahora envíame el **caso completo** con el mismo formato de siempre "
+            "Ahora envíame el <b>caso completo</b> con el mismo formato de siempre "
             "(viñeta, opciones, correcta, justificación, tip, bibliografía).\n\n"
             "El sistema parseará todo y te mostrará un resumen antes de confirmar.\n\n"
             "O /cancelar para salir.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         return STATE_EDIT_PUBLISHED_CASE
 
@@ -1015,15 +1016,16 @@ async def edit_published_case_handler(update: Update, context: ContextTypes.DEFA
         just_preview = (parsed.justification or "")[:100].replace('\n', ' ')
         tip_preview = (parsed.tip or "(vacío)")[:80].replace('\n', ' ')
 
+        from html import escape as html_esc
         preview_text = (
-            f"✏️ **Editar Caso #{display_num}**\n"
+            f"✏️ <b>Editar Caso #{display_num}</b>\n"
             f"{passed}/{total} {score_bar}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📝 Viñeta: {vig_preview}...\n\n"
+            f"📝 Viñeta: {html_esc(vig_preview)}...\n\n"
             f"🔤 Opciones ({len(parsed.options)}): {opt_letters}\n\n"
             f"✅ Correcta: {parsed.correct_letter}\n\n"
-            f"📖 Justificación: {just_preview}...\n\n"
-            f"💡 Tip: {tip_preview}\n\n"
+            f"📖 Justificación: {html_esc(just_preview)}...\n\n"
+            f"💡 Tip: {html_esc(tip_preview)}\n\n"
             f"📚 Bibliografía: {len(parsed.bibliography)} refs\n"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
         )
@@ -1036,12 +1038,12 @@ async def edit_published_case_handler(update: Update, context: ContextTypes.DEFA
                     InlineKeyboardButton("❌ Cancelar", callback_data="edit_pub_cancel"),
                 ]
             ])
-            await update.message.reply_text(preview_text, parse_mode="Markdown", reply_markup=buttons)
+            await update.message.reply_text(preview_text, parse_mode="HTML", reply_markup=buttons)
             return STATE_EDIT_PUBLISHED_CONFIRM
         else:
             missing = [name for name, ok in checks if not ok]
             preview_text += f"⚠️ Falta: {', '.join(missing)}\nEnvía el caso de nuevo completo."
-            await update.message.reply_text(preview_text, parse_mode="Markdown")
+            await update.message.reply_text(preview_text, parse_mode="HTML")
             return STATE_EDIT_PUBLISHED_CASE
 
     except Exception as e:
@@ -1078,9 +1080,9 @@ async def edit_published_confirm_callback(update: Update, context: ContextTypes.
             supabase.update_case(case_uuid, new_case)
 
             await query.edit_message_text(
-                f"✅ **Caso #{display_num}** actualizado exitosamente.\n\n"
+                f"✅ <b>Caso #{display_num}</b> actualizado exitosamente.\n\n"
                 "La Mini App ya mostrará la nueva versión.",
-                parse_mode="Markdown",
+                parse_mode="HTML",
             )
 
             logger.info(f"Published case {case_uuid} (#{display_num}) updated successfully")
