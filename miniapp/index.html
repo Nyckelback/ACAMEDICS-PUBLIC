@@ -62,7 +62,7 @@
         [data-theme="dark"] .tip-text { border-left-color: var(--primary); }
         [data-theme="dark"] .bib-item { border-bottom-color: rgba(255,255,255,0.06); }
         [data-theme="dark"] .footer { border-top-color: var(--border); }
-        [data-theme="dark"] .footer-logo img { filter: brightness(0) invert(1); opacity: 0.3; }
+        [data-theme="dark"] .footer-logo img { filter: brightness(0) invert(1); opacity: 0.5; }
         [data-theme="dark"] .header-logo { filter: brightness(0) invert(1); }
         [data-theme="dark"] .header-birrete svg rect { fill: var(--primary); }
         [data-theme="dark"] .scroll-top { box-shadow: 0 2px 14px rgba(0,0,0,0.5); }
@@ -149,12 +149,11 @@
             border-color: var(--primary); color: var(--primary);
         }
         .theme-btn svg { width: 16px; height: 16px; }
-        .theme-btn .icon-light,
-        .theme-btn .icon-dark,
-        .theme-btn .icon-system { display: none; }
-        [data-theme-mode="light"] .theme-btn .icon-light { display: block; }
-        [data-theme-mode="dark"] .theme-btn .icon-dark { display: block; }
-        [data-theme-mode="system"] .theme-btn .icon-system { display: block; }
+        .theme-btn .icon-sun,
+        .theme-btn .icon-moon { display: none; }
+        .theme-btn .icon-moon { display: block; }
+        [data-theme="dark"] .theme-btn .icon-moon { display: none; }
+        [data-theme="dark"] .theme-btn .icon-sun { display: block; }
 
         .hero-title {
             font-family: var(--font-title);
@@ -502,27 +501,26 @@
     <div class="bottom-bar"></div>
 
     <script>
-        // ─── Theme system: light / dark / system ───
-        const THEME_MODES = ['light', 'dark', 'system'];
-        let currentThemeMode = 'system';
-        try { currentThemeMode = localStorage.getItem('acamedics-theme') || 'system'; } catch(e) {}
+        // ─── Theme: sun/moon toggle (starts from system preference) ───
         const themeMql = window.matchMedia('(prefers-color-scheme: dark)');
+        let savedTheme = null;
+        try { savedTheme = localStorage.getItem('acamedics-theme'); } catch(e) {}
 
-        function applyTheme(mode) {
-            currentThemeMode = mode;
-            try { localStorage.setItem('acamedics-theme', mode); } catch(e) {}
-            document.documentElement.setAttribute('data-theme-mode', mode);
-            const effective = mode === 'system' ? (themeMql.matches ? 'dark' : 'light') : mode;
-            if (effective === 'dark') {
+        function applyTheme(theme) {
+            if (theme === 'dark') {
                 document.documentElement.setAttribute('data-theme', 'dark');
             } else {
                 document.documentElement.removeAttribute('data-theme');
             }
-            const btn = document.getElementById('themeToggle');
-            if (btn) btn.classList.toggle('active', mode !== 'light');
         }
-        themeMql.addEventListener('change', () => { if (currentThemeMode === 'system') applyTheme('system'); });
-        applyTheme(currentThemeMode);
+        function getEffective() {
+            if (savedTheme) return savedTheme;
+            return themeMql.matches ? 'dark' : 'light';
+        }
+        themeMql.addEventListener('change', () => {
+            if (!savedTheme) applyTheme(themeMql.matches ? 'dark' : 'light');
+        });
+        applyTheme(getEffective());
 
         let tg = null;
         try {
@@ -640,9 +638,8 @@
             html += '<div class="ctrl-btns">';
             html += '<button class="font-btn" id="fontCycle">Aa</button>';
             html += '<button class="theme-btn" id="themeToggle" title="Cambiar tema">';
-            html += '<svg class="icon-light" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-            html += '<svg class="icon-dark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
-            html += '<svg class="icon-system" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>';
+            html += '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
+            html += '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
             html += '</button></div>';
             html += '</div>';
             if (d.correct_letter && d.correct_text) {
@@ -802,15 +799,14 @@
                 fc.classList.toggle('active', sizeIdx !== 1);
             });
 
-            // Theme toggle: light → dark → system → light
+            // Theme toggle: simple sun/moon flip
             const tt = document.getElementById('themeToggle');
             if (tt) tt.addEventListener('click', e => {
                 e.stopPropagation();
-                const nextIdx = (THEME_MODES.indexOf(currentThemeMode) + 1) % THEME_MODES.length;
-                applyTheme(THEME_MODES[nextIdx]);
+                savedTheme = getEffective() === 'dark' ? 'light' : 'dark';
+                try { localStorage.setItem('acamedics-theme', savedTheme); } catch(ex) {}
+                applyTheme(savedTheme);
             });
-            // Re-apply theme after render (button now exists in DOM)
-            applyTheme(currentThemeMode);
         }
 
         // Scroll to top button
