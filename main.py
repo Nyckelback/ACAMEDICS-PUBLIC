@@ -862,7 +862,7 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
 
         if not result.data:
             # Fallback: search all published cases and compute hash
-            all_cases = supabase.client.table("cases").select("id,vignette,correct_letter,correct_text,justification,tip,bibliography,images").eq("published", True).execute()
+            all_cases = supabase.client.table("cases").select("*").eq("published", True).execute()
             found = None
             for case in (all_cases.data or []):
                 if case_display_num(case["id"]) == display_num:
@@ -884,26 +884,50 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
         context.user_data["editing_case_uuid"] = case_data["id"]
         context.user_data["editing_display_num"] = display_num
 
-        # Show current case info
-        vig_preview = (case_data.get("vignette") or "")[:100].replace('\n', ' ')
-        just_preview = (case_data.get("justification") or "")[:150].replace('\n', ' ')
-        tip_preview = (case_data.get("tip") or "(sin tip)")[:100].replace('\n', ' ')
-        bib_count = len(case_data.get("bibliography") or [])
-
-        # Use HTML to avoid Markdown issues with special chars in case text
+        # Show current case info — full preview
         from html import escape as html_esc
+        vig_preview = (case_data.get("vignette") or "")[:200].replace('\n', ' ')
+        just_preview = (case_data.get("justification") or "")[:200].replace('\n', ' ')
+        tip_preview = (case_data.get("tip") or "(sin tip)")[:150].replace('\n', ' ')
+        bib_count = len(case_data.get("bibliography") or [])
+        correct_letter = case_data.get("correct_letter", "?")
+        correct_text = case_data.get("correct_text", "")
+
+        # Build options preview
+        options = case_data.get("options") or []
+        options_lines = ""
+        if options:
+            for opt in options:
+                letter = opt.get("letter", "?")
+                opt_text = (opt.get("text") or "")[:80]
+                marker = "✅" if letter == correct_letter else "   "
+                options_lines += f"{marker} {letter}. {html_esc(opt_text)}\n"
+        else:
+            options_lines = f"✅ Correcta: {correct_letter}"
+            if correct_text:
+                options_lines += f" — {html_esc(correct_text[:80])}"
+            options_lines += "\n"
+
+        # Build bibliography preview
+        bib_lines = ""
+        bibs = case_data.get("bibliography") or []
+        for i, ref in enumerate(bibs[:3], 1):
+            ref_text = (ref if isinstance(ref, str) else str(ref))[:100]
+            bib_lines += f"  {i}. {html_esc(ref_text)}...\n"
+        if len(bibs) > 3:
+            bib_lines += f"  ... y {len(bibs) - 3} más\n"
+
         await update.message.reply_text(
             f"📋 <b>Caso #{display_num}</b> encontrado\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📝 Viñeta: {html_esc(vig_preview)}...\n\n"
-            f"✅ Correcta: {case_data.get('correct_letter', '?')}\n\n"
-            f"📖 Justificación: {html_esc(just_preview)}...\n\n"
-            f"💡 Tip: {html_esc(tip_preview)}\n\n"
-            f"📚 Bibliografía: {bib_count} refs\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"📝 <b>Viñeta:</b>\n{html_esc(vig_preview)}...\n\n"
+            f"🔤 <b>Opciones:</b>\n{options_lines}\n"
+            f"📖 <b>Justificación:</b>\n{html_esc(just_preview)}...\n\n"
+            f"💡 <b>Tip:</b>\n{html_esc(tip_preview)}\n\n"
+            f"📚 <b>Bibliografía ({bib_count} refs):</b>\n{bib_lines}"
             f"━━━━━━━━━━━━━━━━━━━━\n\n"
             "Ahora envíame el <b>caso completo</b> con el mismo formato de siempre "
             "(viñeta, opciones, correcta, justificación, tip, bibliografía).\n\n"
-            "El sistema parseará todo y te mostrará un resumen antes de confirmar.\n\n"
             "O /cancelar para salir.",
             parse_mode="HTML",
         )
