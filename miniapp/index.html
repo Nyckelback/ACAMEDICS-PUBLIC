@@ -62,15 +62,22 @@
         [data-theme="dark"] .tip-text { border-left-color: var(--primary); }
         [data-theme="dark"] .bib-item { border-bottom-color: rgba(255,255,255,0.06); }
         [data-theme="dark"] .footer { border-top-color: var(--border); }
-        [data-theme="dark"] .header-logo { display: none; }
-        [data-theme="dark"] .header-logo-dark { display: block; }
-        [data-theme="dark"] .footer-logo .logo-light { display: none; }
-        [data-theme="dark"] .footer-logo .logo-dark { display: inline; }
-        .header-logo-dark { display: none; height: 17px; width: auto; }
-        .footer-logo .logo-dark { display: none; height: 16px; width: auto; opacity: 0.5; }
-        [data-theme="dark"] .header-birrete svg rect { fill: var(--primary); }
+        .header-logo-text {
+            font-family: var(--font-title);
+            font-size: 14px; font-weight: 400;
+            color: var(--navy);
+            letter-spacing: -0.3px;
+            margin-top: 2px;
+        }
+        [data-theme="dark"] .header-birrete svg rect { fill: #20A4B0; }
+        [data-theme="dark"] .header-birrete svg circle,
+        [data-theme="dark"] .header-birrete svg rect:not(:first-child) { fill: #FFFFFF; }
         [data-theme="dark"] .scroll-top { box-shadow: 0 2px 14px rgba(0,0,0,0.5); }
         [data-theme="dark"] .img-toggle-count { background: var(--border); color: var(--slate); }
+        [data-theme="dark"] .motivation-text { color: #BDBDBD; }
+        [data-theme="dark"] .footer-logo-text { color: #BDBDBD; opacity: 0.6; }
+        [data-theme="dark"] .footer-link { color: #BDBDBD; }
+        [data-theme="dark"] .footer-copy { color: #BDBDBD; opacity: 0.5; }
         [data-theme="dark"] .divider--primary { background: linear-gradient(90deg, var(--primary), var(--border) 70%, transparent); }
         [data-theme="dark"] .bottom-bar { background: linear-gradient(90deg, #333, var(--primary), var(--accent)); }
         [data-theme="dark"] .lightbox { background: rgba(0,0,0,0.96); }
@@ -417,12 +424,11 @@
             overflow: hidden;
         }
         .footer-logo { text-align: center; margin-bottom: 12px; }
-        .footer-logo img { height: 16px; width: auto; opacity: 0.45; }
         .footer-logo-text {
             font-family: var(--font-title);
-            font-size: 13px; font-weight: 700;
+            font-size: 13px; font-weight: 400;
             color: var(--text-muted);
-            opacity: 0.45; letter-spacing: 1px;
+            opacity: 0.45; letter-spacing: -0.3px;
         }
         .footer-social {
             display: flex; justify-content: center; gap: 20px;
@@ -627,8 +633,7 @@
             html += '<div class="header">';
             html += '<div class="header-left">';
             html += '<div class="header-birrete"><svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="10" fill="#18828C"/><g transform="translate(4,7) scale(0.5)"><polygon points="32,6 4,22 32,38 60,22" fill="white"/><path d="M16 24v10c0 5.5 7.2 10 16 10s16-4.5 16-10V24" fill="rgba(255,255,255,0.9)"/><rect x="54" y="22" width="3" height="20" rx="1.5" fill="white"/><circle cx="55.5" cy="44" r="3" fill="white"/></g></svg></div>';
-            html += '<img class="header-logo" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo.png?v=2" alt="ACAMEDICS" onerror="this.style.display=\'none\';this.parentNode.insertAdjacentHTML(\'afterbegin\',\'<span style=font-family:var(--font-title);font-weight:700;font-size:14px;color:var(--navy)>ACAMEDICS</span>\');">';
-            html += '<img class="header-logo-dark" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo-dark.png" alt="ACAMEDICS">';
+            html += '<span class="header-logo-text">ACAMEDICS</span>';
             html += '<div class="header-divider"></div>';
             html += '<span class="header-case">Caso #'+esc(String(caseNum))+'</span>';
             html += '</div></div>';
@@ -746,8 +751,7 @@
             html += '</div>';
             // Logo
             html += '<div class="footer-logo">';
-            html += '<img class="logo-light" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo.png?v=2" alt="ACAMEDICS" onerror="this.outerHTML=\'<span class=footer-logo-text>ACAMEDICS</span>\';">';
-            html += '<img class="logo-dark" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo-dark.png" alt="ACAMEDICS">';
+            html += '<span class="footer-logo-text">ACAMEDICS</span>';
             html += '</div>';
             // Social
             html += '<div class="footer-social">';
