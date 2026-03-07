@@ -355,6 +355,7 @@ async def caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     """Handle /caso command (admin only) - activate case mode."""
     if not _is_admin(update.effective_user.id):
         return ConversationHandler.END
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     # Check if there's already a pending case
     pending = context.user_data.get("pending_case")
@@ -699,6 +700,7 @@ async def waiting_images_text_handler(update: Update, context: ContextTypes.DEFA
 
 async def editar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Show edit menu for pending case."""
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     pending = context.user_data.get("pending_case")
     if not pending:
         await update.message.reply_text("❌ No hay caso en preparación.")
@@ -806,6 +808,7 @@ async def editar_caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Start the edit published case flow. Ask for case display number."""
     if not _is_admin(update.effective_user.id):
         return ConversationHandler.END
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     # Check if there's already a case being created
     pending = context.user_data.get("pending_case")
@@ -829,6 +832,7 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
     """Receive the display number and look up the case in Supabase."""
     if not update.message:
         return STATE_EDIT_PUBLISHED_NUMBER
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     text = update.message.text.strip()
 
@@ -911,9 +915,13 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
 
 
 async def edit_published_case_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Receive the full case text, parse it, and ask for confirmation."""
+    """Receive the full case text, parse it, and ask for confirmation.
+    Also handles split messages: if a case was already parsed and more text arrives,
+    check if it looks like bibliography and append it."""
     if not update.message:
         return STATE_EDIT_PUBLISHED_CASE
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     raw_text_plain = update.message.text.strip()
 
@@ -927,14 +935,45 @@ async def edit_published_case_handler(update: Update, context: ContextTypes.DEFA
         )
         return STATE_EDIT_PUBLISHED_CASE
 
+    # Restore bold/italic markers from Telegram entities
+    raw_text = restore_formatting(update.message.text, update.message.entities).strip()
+
+    # Check if we already have a parsed case and this is a continuation (split message)
+    existing_case = context.user_data.get("editing_new_case")
+    if existing_case and len(raw_text_plain) < 500:
+        import re
+        bib_patterns = [
+            r'\d{4}[;:]\d+', r'et\s*al', r'doi[:\s]', r'PMID', r'ISBN',
+            r'\b(?:J|Am|Br|Int|Eur|Ann|Arch|Clin)\b.*\b\d{4}\b',
+            r'Publishing[;,.]',
+            r'Psychiatry|Medicine|Surgery|Lancet|BMJ|NEJM|JAMA',
+            r'^\w+\s\w+[,.].*\d{4}',
+        ]
+        is_bib = any(re.search(pat, raw_text, re.IGNORECASE) for pat in bib_patterns)
+        if is_bib:
+            new_refs = [l.strip() for l in raw_text.split('\n') if l.strip()]
+            existing_case["bibliography"] = existing_case.get("bibliography", []) + new_refs
+            bib_count = len(existing_case["bibliography"])
+
+            display_num = context.user_data.get("editing_display_num", "?")
+            buttons = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Confirmar", callback_data="edit_pub_confirm"),
+                    InlineKeyboardButton("❌ Cancelar", callback_data="edit_pub_cancel"),
+                ]
+            ])
+            await update.message.reply_text(
+                f"📚 +{len(new_refs)} referencia(s) agregada(s) al caso #{display_num} (total: {bib_count}).\n\n"
+                "¿Confirmas la actualización?",
+                reply_markup=buttons,
+            )
+            return STATE_EDIT_PUBLISHED_CONFIRM
+
     if len(raw_text_plain) < 50:
         await update.message.reply_text(
             "⚠️ El texto es muy corto. Envía el caso completo."
         )
         return STATE_EDIT_PUBLISHED_CASE
-
-    # Restore bold/italic markers from Telegram entities
-    raw_text = restore_formatting(update.message.text, update.message.entities).strip()
 
     try:
         parsed = parse_case(raw_text)
@@ -1418,12 +1457,8 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle /cancelar command - cancel case creation and clean up preview."""
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     preview_uuid = context.user_data.get("preview_uuid")
-    pending = context.user_data.get("pending_case")
-
-    if not pending and not preview_uuid:
-        await update.message.reply_text("ℹ️ No hay caso pendiente para cancelar.")
-        return ConversationHandler.END
 
     # Delete orphan preview from Supabase if it exists
     if preview_uuid:
@@ -1434,7 +1469,7 @@ async def cancelar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             logger.warning(f"Could not delete preview {preview_uuid}: {e}")
     context.user_data.clear()
     await update.message.reply_text(
-        "🗑️ Caso cancelado y eliminado.",
+        "🗑️ Cancelado.",
         reply_markup=_admin_keyboard(),
     )
     return ConversationHandler.END
@@ -1444,6 +1479,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     """Handle /admin command - show admin commands."""
     if not _is_admin(update.effective_user.id):
         return  # Silently ignore for non-admins
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
     admin_text = (
         "🔧 <b>Comandos de Administrador:</b>\n\n"
@@ -1469,6 +1505,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command."""
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     import random
     help_messages = [
         (
@@ -1587,6 +1624,18 @@ def main() -> None:
         _BTN_CANCELAR = filters.Regex(r"(?i)^cancelar$") & ~filters.UpdateType.EDITED_MESSAGE
         _BTN_EDITAR = filters.Regex(r"(?i)^(editar|✏️\s*editar\s*pendiente)$") & ~filters.UpdateType.EDITED_MESSAGE
 
+        # Define _BTN_EDITAR_CASO early so it can be used in case_conv too
+        _BTN_EDITAR_CASO = filters.Regex(r"(?i)^(editar\s*caso|📝\s*editar\s*publicado)$") & ~filters.UpdateType.EDITED_MESSAGE
+
+        # Helper: exit case_conv and tell user to use editar_caso
+        async def _exit_to_edit_published(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+            """Exit case_conv when user wants to edit a published case instead."""
+            await update.message.reply_text(
+                "✏️ Saliendo del modo de creación.\nUsa /editar_caso o presiona 📝 Editar Publicado de nuevo.",
+                reply_markup=_admin_keyboard(),
+            )
+            return ConversationHandler.END
+
         # Case creation conversation
         case_conv = ConversationHandler(
             entry_points=[
@@ -1595,6 +1644,14 @@ def main() -> None:
             ],
             states={
                 STATE_CASE_MODE: [
+                    # Button/command handlers BEFORE generic text handler
+                    CommandHandler("cancelar", cancelar_command),
+                    MessageHandler(_BTN_CANCELAR, cancelar_command),
+                    CommandHandler("caso", caso_command),
+                    MessageHandler(_BTN_CASO, caso_command),
+                    CommandHandler("editar_caso", _exit_to_edit_published),
+                    MessageHandler(_BTN_EDITAR_CASO, _exit_to_edit_published),
+                    # Generic text handler (catch-all) - MUST be last
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, case_text_handler),
                 ],
                 STATE_WAITING_IMAGES: [
@@ -1610,12 +1667,14 @@ def main() -> None:
                     CommandHandler("editar_just", editar_just_command),
                     CommandHandler("editar_bib", editar_bib_command),
                     CommandHandler("cancelar", cancelar_command),
+                    CommandHandler("editar_caso", _exit_to_edit_published),
                     # Keyboard button texts (without slash) - BEFORE generic text handler
                     MessageHandler(_BTN_CASO, caso_command),
                     MessageHandler(_BTN_PREVIEW, preview_command),
                     MessageHandler(_BTN_PUBLICAR, publicar_command),
                     MessageHandler(_BTN_CANCELAR, cancelar_command),
                     MessageHandler(_BTN_EDITAR, editar_command),
+                    MessageHandler(_BTN_EDITAR_CASO, _exit_to_edit_published),
                     # Generic text handler (catch-all) - MUST be last
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, waiting_images_text_handler),
                 ],
@@ -1644,7 +1703,6 @@ def main() -> None:
         app.add_handler(case_conv)
 
         # Edit published case conversation
-        _BTN_EDITAR_CASO = filters.Regex(r"(?i)^(editar\s*caso|📝\s*editar\s*publicado)$") & ~filters.UpdateType.EDITED_MESSAGE
         edit_pub_conv = ConversationHandler(
             entry_points=[
                 CommandHandler("editar_caso", editar_caso_command),
@@ -1665,6 +1723,8 @@ def main() -> None:
                     CallbackQueryHandler(edit_published_confirm_callback, pattern="^edit_pub_"),
                     CommandHandler("cancelar", edit_published_cancelar),
                     MessageHandler(_BTN_CANCELAR, edit_published_cancelar),
+                    # Allow receiving split bibliography even after confirm buttons shown
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_published_case_handler),
                 ],
             },
             fallbacks=[
