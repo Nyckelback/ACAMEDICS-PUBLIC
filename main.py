@@ -52,6 +52,23 @@ STATE_WAITING_IMAGES = 2
 STATE_EDIT_TIP = 3
 STATE_EDIT_JUSTIFICATION = 4
 STATE_EDIT_BIB = 5
+STATE_EDIT_PUBLISHED_NUMBER = 6
+STATE_EDIT_PUBLISHED_CASE = 7
+STATE_EDIT_PUBLISHED_CONFIRM = 8
+
+
+def case_display_num(uuid_str: str) -> int:
+    """Generate a consistent display number (1000-3000) from UUID hash.
+    Must match the JavaScript version in index.html exactly."""
+    if not uuid_str:
+        return 1000
+    h = 0
+    for ch in uuid_str:
+        h = ((h << 5) - h) + ord(ch)
+        h &= 0xFFFFFFFF  # Keep as 32-bit
+        if h >= 0x80000000:
+            h -= 0x100000000  # Convert to signed 32-bit
+    return 1000 + (abs(h) % 2001)
 
 # Supabase client
 supabase = None
@@ -63,7 +80,8 @@ def _admin_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("Caso"), KeyboardButton("Preview")],
         [KeyboardButton("Publicar"), KeyboardButton("Cancelar")],
-        [KeyboardButton("Editar"), KeyboardButton("Admin")],
+        [KeyboardButton("Editar"), KeyboardButton("Editar Caso")],
+        [KeyboardButton("Admin")],
     ]
     return ReplyKeyboardMarkup(
         keyboard,
@@ -85,12 +103,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         # Welcome message
         welcome_text = (
             "🎓 ¡Bienvenido a ACAMEDICS!\n\n"
-            "Medicina académica basada en evidencia.\n\n"
-            "Cada día publicamos un caso clínico con justificación "
-            "detallada, tips acamédicos y bibliografía actualizada.\n\n"
-            "📋 Responde el caso en el canal\n"
-            "💡 Toca 'VER JUSTIFICACIÓN' para aprender\n"
-            "📈 Fortalece tu razonamiento clínico día a día"
+            "Donde la medicina se aprende caso a caso.\n\n"
+            "Casos clínicos con justificación completa, "
+            "tips acamédicos y bibliografía basada en evidencia.\n\n"
+            "Entra al canal, pon a prueba tu criterio clínico "
+            "y aprende con cada justificación."
         )
         if _is_admin(user.id):
             await update.message.reply_text(
@@ -708,6 +725,255 @@ async def edit_bib_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     return STATE_WAITING_IMAGES
 
 
+# ═══════════════════════════════════════════
+# EDIT PUBLISHED CASE FLOW
+# ═══════════════════════════════════════════
+
+async def editar_caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the edit published case flow. Ask for case display number."""
+    if not _is_admin(update.effective_user.id):
+        return ConversationHandler.END
+
+    # Check if there's already a case being created
+    pending = context.user_data.get("pending_case")
+    if pending:
+        await update.message.reply_text(
+            "⚠️ Ya tienes un caso en preparación. Usa /cancelar primero o /publicar."
+        )
+        return STATE_WAITING_IMAGES
+
+    await update.message.reply_text(
+        "✏️ **Editar caso publicado**\n\n"
+        "Envía el número del caso (el # que aparece en la Mini App).\n"
+        "Ejemplo: `2184`\n\n"
+        "O /cancelar para salir.",
+        parse_mode="Markdown",
+    )
+    return STATE_EDIT_PUBLISHED_NUMBER
+
+
+async def edit_published_number_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive the display number and look up the case in Supabase."""
+    if not update.message:
+        return STATE_EDIT_PUBLISHED_NUMBER
+
+    text = update.message.text.strip().replace("#", "")
+
+    try:
+        display_num = int(text)
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Eso no es un número válido. Envía solo el número, ej: `2184`",
+            parse_mode="Markdown",
+        )
+        return STATE_EDIT_PUBLISHED_NUMBER
+
+    # First try to find by display_number field (for new cases)
+    try:
+        result = supabase.client.table("cases").select("*").eq("display_number", display_num).eq("published", True).execute()
+
+        if not result.data:
+            # Fallback: search all published cases and compute hash
+            all_cases = supabase.client.table("cases").select("id,vignette,correct_letter,correct_text,justification,tip,bibliography,images").eq("published", True).execute()
+            found = None
+            for case in (all_cases.data or []):
+                if case_display_num(case["id"]) == display_num:
+                    found = case
+                    break
+
+            if not found:
+                await update.message.reply_text(
+                    f"❌ No se encontró ningún caso publicado con el número #{display_num}.\n"
+                    "Verifica el número e intenta de nuevo, o /cancelar."
+                )
+                return STATE_EDIT_PUBLISHED_NUMBER
+
+            case_data = found
+        else:
+            case_data = result.data[0]
+
+        # Store the case being edited
+        context.user_data["editing_case_uuid"] = case_data["id"]
+        context.user_data["editing_display_num"] = display_num
+
+        # Show current case info
+        vig_preview = (case_data.get("vignette") or "")[:100].replace('\n', ' ')
+        just_preview = (case_data.get("justification") or "")[:150].replace('\n', ' ')
+        tip_preview = (case_data.get("tip") or "(sin tip)")[:100].replace('\n', ' ')
+        bib_count = len(case_data.get("bibliography") or [])
+
+        await update.message.reply_text(
+            f"📋 **Caso #{display_num}** encontrado\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📝 Viñeta: {vig_preview}...\n\n"
+            f"✅ Correcta: {case_data.get('correct_letter', '?')}\n\n"
+            f"📖 Justificación: {just_preview}...\n\n"
+            f"💡 Tip: {tip_preview}\n\n"
+            f"📚 Bibliografía: {bib_count} refs\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Ahora envíame el **caso completo** con el mismo formato de siempre "
+            "(viñeta, opciones, correcta, justificación, tip, bibliografía).\n\n"
+            "El sistema parseará todo y te mostrará un resumen antes de confirmar.\n\n"
+            "O /cancelar para salir.",
+            parse_mode="Markdown",
+        )
+        return STATE_EDIT_PUBLISHED_CASE
+
+    except Exception as e:
+        logger.error(f"Error looking up case by display number: {e}")
+        await update.message.reply_text(f"❌ Error al buscar el caso: {str(e)}")
+        return STATE_EDIT_PUBLISHED_NUMBER
+
+
+async def edit_published_case_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive the full case text, parse it, and ask for confirmation."""
+    if not update.message:
+        return STATE_EDIT_PUBLISHED_CASE
+
+    raw_text = update.message.text.strip()
+    if len(raw_text) < 50:
+        await update.message.reply_text(
+            "⚠️ El texto es muy corto. Envía el caso completo."
+        )
+        return STATE_EDIT_PUBLISHED_CASE
+
+    try:
+        parsed = parse_case(raw_text)
+        is_valid, errors = validate_case(parsed)
+
+        display_num = context.user_data.get("editing_display_num", "?")
+
+        # Build the case data dict
+        new_case = {
+            "vignette": parsed.vignette,
+            "options": parsed.options,
+            "correct_letter": parsed.correct_letter,
+            "correct_text": "",
+            "justification": parsed.justification,
+            "tip": parsed.tip or "",
+            "bibliography": parsed.bibliography,
+        }
+        # Get correct text from options
+        for opt in parsed.options:
+            if opt["letter"] == parsed.correct_letter:
+                new_case["correct_text"] = opt["text"]
+                break
+
+        context.user_data["editing_new_case"] = new_case
+
+        # Show parsed summary
+        checks = [
+            ("Viñeta", bool(parsed.vignette)),
+            ("Opciones", len(parsed.options) >= 2),
+            ("Correcta", bool(parsed.correct_letter)),
+            ("Justificación", bool(parsed.justification)),
+        ]
+        passed = sum(1 for _, ok in checks if ok)
+        total = len(checks)
+        score_bar = "".join("🟢" if ok else "🔴" for _, ok in checks)
+
+        vig_preview = parsed.vignette[:90].replace('\n', ' ')
+        opt_letters = ', '.join(opt['letter'] for opt in parsed.options)
+        just_preview = (parsed.justification or "")[:100].replace('\n', ' ')
+        tip_preview = (parsed.tip or "(vacío)")[:80].replace('\n', ' ')
+
+        preview_text = (
+            f"✏️ **Editar Caso #{display_num}**\n"
+            f"{passed}/{total} {score_bar}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📝 Viñeta: {vig_preview}...\n\n"
+            f"🔤 Opciones ({len(parsed.options)}): {opt_letters}\n\n"
+            f"✅ Correcta: {parsed.correct_letter}\n\n"
+            f"📖 Justificación: {just_preview}...\n\n"
+            f"💡 Tip: {tip_preview}\n\n"
+            f"📚 Bibliografía: {len(parsed.bibliography)} refs\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
+        if passed == total:
+            preview_text += "¿Confirmas la actualización?"
+            buttons = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Confirmar", callback_data="edit_pub_confirm"),
+                    InlineKeyboardButton("❌ Cancelar", callback_data="edit_pub_cancel"),
+                ]
+            ])
+            await update.message.reply_text(preview_text, parse_mode="Markdown", reply_markup=buttons)
+            return STATE_EDIT_PUBLISHED_CONFIRM
+        else:
+            missing = [name for name, ok in checks if not ok]
+            preview_text += f"⚠️ Falta: {', '.join(missing)}\nEnvía el caso de nuevo completo."
+            await update.message.reply_text(preview_text, parse_mode="Markdown")
+            return STATE_EDIT_PUBLISHED_CASE
+
+    except Exception as e:
+        logger.error(f"Error parsing edited case: {e}")
+        await update.message.reply_text(f"❌ Error al parsear el caso: {str(e)}\nIntenta de nuevo.")
+        return STATE_EDIT_PUBLISHED_CASE
+
+
+async def edit_published_confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle confirm/cancel buttons for editing published case."""
+    query = update.callback_query
+
+    if query.data == "edit_pub_cancel":
+        await query.answer("Edición cancelada")
+        await query.edit_message_text("🗑️ Edición cancelada.")
+        context.user_data.pop("editing_case_uuid", None)
+        context.user_data.pop("editing_display_num", None)
+        context.user_data.pop("editing_new_case", None)
+        return ConversationHandler.END
+
+    if query.data == "edit_pub_confirm":
+        await query.answer("⏳ Actualizando caso...")
+
+        case_uuid = context.user_data.get("editing_case_uuid")
+        new_case = context.user_data.get("editing_new_case")
+        display_num = context.user_data.get("editing_display_num")
+
+        if not case_uuid or not new_case:
+            await query.edit_message_text("❌ Error: datos de edición perdidos.")
+            return ConversationHandler.END
+
+        try:
+            # Update the case in Supabase
+            supabase.update_case(case_uuid, new_case)
+
+            await query.edit_message_text(
+                f"✅ **Caso #{display_num}** actualizado exitosamente.\n\n"
+                "La Mini App ya mostrará la nueva versión.",
+                parse_mode="Markdown",
+            )
+
+            logger.info(f"Published case {case_uuid} (#{display_num}) updated successfully")
+
+            # Clean up
+            context.user_data.pop("editing_case_uuid", None)
+            context.user_data.pop("editing_display_num", None)
+            context.user_data.pop("editing_new_case", None)
+            return ConversationHandler.END
+
+        except Exception as e:
+            logger.error(f"Error updating published case: {e}")
+            await query.edit_message_text(f"❌ Error al actualizar: {str(e)}")
+            return ConversationHandler.END
+
+    await query.answer()
+    return STATE_EDIT_PUBLISHED_CONFIRM
+
+
+async def edit_published_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the edit published flow."""
+    context.user_data.pop("editing_case_uuid", None)
+    context.user_data.pop("editing_display_num", None)
+    context.user_data.pop("editing_new_case", None)
+    await update.message.reply_text(
+        "🗑️ Edición cancelada.",
+        reply_markup=_admin_keyboard(),
+    )
+    return ConversationHandler.END
+
+
 async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle inline button callbacks for Preview and Publicar.
     Uses query.answer() for toast notifications (top bar) instead of messages."""
@@ -850,7 +1116,7 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
         logger.info(f"Poll published for case {case_uuid}: {poll_msg.message_id}")
         supabase.update_case(
             case_uuid,
-            {"telegram_message_id": poll_msg.message_id, "published": True},
+            {"telegram_message_id": poll_msg.message_id, "published": True, "display_number": case_display_num(case_uuid)},
         )
 
         # Edit the original message to show confirmation (no new message)
@@ -1030,6 +1296,7 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             {
                 "telegram_message_id": poll_msg.message_id,
                 "published": True,
+                "display_number": case_display_num(case_uuid),
             },
         )
 
@@ -1086,6 +1353,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/preview - Ver cómo queda en la Mini App\n"
         "/publicar - Publicar en el canal\n"
         "/editar - Editar secciones del caso\n"
+        "/editar_caso - Editar caso ya publicado\n"
         "/cancelar - Cancelar\n"
         "/admin - Ver este menú\n\n"
         "**Flujo:**\n"
@@ -1107,14 +1375,15 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     help_messages = [
         (
             "🎓 **ACAMEDICS — Medicina académica**\n\n"
-            "Cada día publicamos un caso clínico en el canal. "
-            "Respóndelo y luego toca 'VER JUSTIFICACIÓN' para "
-            "descubrir el análisis completo con bibliografía.\n\n"
+            "Casos clínicos con justificación completa, "
+            "tips acamédicos y bibliografía basada en evidencia.\n\n"
+            "Responde en el canal y toca 'VER JUSTIFICACIÓN' "
+            "para descubrir el análisis completo.\n\n"
             "📖 Aprende. Practica. Domina la clínica."
         ),
         (
             "🩺 **¿Cómo funciona ACAMEDICS?**\n\n"
-            "1. Lee el caso clínico del día en el canal\n"
+            "1. Lee el caso clínico en el canal\n"
             "2. Elige tu respuesta\n"
             "3. Toca 'VER JUSTIFICACIÓN' para ver la explicación\n\n"
             "💡 Cada caso incluye justificación detallada, "
@@ -1124,7 +1393,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "📚 **ACAMEDICS — Basado en evidencia**\n\n"
             "Nuestros casos clínicos están diseñados para "
             "fortalecer tu razonamiento clínico.\n\n"
-            "Entra al canal, responde el caso del día y "
+            "Entra al canal, responde y "
             "revisa la justificación completa. "
             "¡Tu conocimiento se construye caso a caso!"
         ),
@@ -1177,6 +1446,7 @@ async def post_init(application) -> None:
         BotCommand("preview", "👁️ Ver preview en Mini App"),
         BotCommand("publicar", "📢 Publicar en el canal"),
         BotCommand("editar", "✏️ Editar secciones del caso"),
+        BotCommand("editar_caso", "📝 Editar caso publicado"),
         BotCommand("cancelar", "🗑️ Cancelar caso pendiente"),
         BotCommand("admin", "🔧 Panel de administrador"),
         BotCommand("help", "ℹ️ Ayuda"),
@@ -1274,6 +1544,34 @@ def main() -> None:
             per_user=True,
         )
         app.add_handler(case_conv)
+
+        # Edit published case conversation
+        _BTN_EDITAR_CASO = filters.Regex(r"(?i)^editar\s*caso$") & ~filters.UpdateType.EDITED_MESSAGE
+        edit_pub_conv = ConversationHandler(
+            entry_points=[
+                CommandHandler("editar_caso", editar_caso_command),
+                MessageHandler(_BTN_EDITAR_CASO, editar_caso_command),
+            ],
+            states={
+                STATE_EDIT_PUBLISHED_NUMBER: [
+                    CommandHandler("cancelar", edit_published_cancelar),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_published_number_handler),
+                ],
+                STATE_EDIT_PUBLISHED_CASE: [
+                    CommandHandler("cancelar", edit_published_cancelar),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_published_case_handler),
+                ],
+                STATE_EDIT_PUBLISHED_CONFIRM: [
+                    CallbackQueryHandler(edit_published_confirm_callback, pattern="^edit_pub_"),
+                    CommandHandler("cancelar", edit_published_cancelar),
+                ],
+            },
+            fallbacks=[
+                CommandHandler("cancelar", edit_published_cancelar),
+            ],
+            per_user=True,
+        )
+        app.add_handler(edit_pub_conv)
 
         # Standalone fallback handlers for commands/buttons used outside conversation
         async def fallback_cancelar(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
