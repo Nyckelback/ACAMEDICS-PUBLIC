@@ -329,7 +329,6 @@ async def _delete_message(context: ContextTypes.DEFAULT_TYPE) -> None:
 async def caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle /caso command (admin only) - activate case mode."""
     if not _is_admin(update.effective_user.id):
-        return  # Silently ignore for non-admins
         return ConversationHandler.END
 
     # Check if there's already a pending case
@@ -740,7 +739,7 @@ async def editar_caso_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(
             "⚠️ Ya tienes un caso en preparación. Usa /cancelar primero o /publicar."
         )
-        return STATE_WAITING_IMAGES
+        return ConversationHandler.END
 
     await update.message.reply_text(
         "✏️ **Editar caso publicado**\n\n"
@@ -757,7 +756,18 @@ async def edit_published_number_handler(update: Update, context: ContextTypes.DE
     if not update.message:
         return STATE_EDIT_PUBLISHED_NUMBER
 
-    text = update.message.text.strip().replace("#", "")
+    text = update.message.text.strip()
+
+    # Ignore known keyboard button texts (they're not case numbers)
+    _known_buttons = {"caso", "preview", "publicar", "cancelar", "editar", "editar caso", "admin"}
+    if text.lower() in _known_buttons:
+        await update.message.reply_text(
+            "⚠️ Estás en modo edición de caso publicado.\n"
+            "Envía el número del caso o /cancelar para salir."
+        )
+        return STATE_EDIT_PUBLISHED_NUMBER
+
+    text = text.replace("#", "")
 
     try:
         display_num = int(text)
@@ -831,6 +841,16 @@ async def edit_published_case_handler(update: Update, context: ContextTypes.DEFA
         return STATE_EDIT_PUBLISHED_CASE
 
     raw_text = update.message.text.strip()
+
+    # Ignore known keyboard button texts
+    _known_buttons = {"caso", "preview", "publicar", "cancelar", "editar", "editar caso", "admin"}
+    if raw_text.lower() in _known_buttons:
+        await update.message.reply_text(
+            "⚠️ Estás editando un caso publicado.\n"
+            "Envía el caso completo o /cancelar para salir."
+        )
+        return STATE_EDIT_PUBLISHED_CASE
+
     if len(raw_text) < 50:
         await update.message.reply_text(
             "⚠️ El texto es muy corto. Envía el caso completo."
@@ -1194,7 +1214,6 @@ async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Handle /publicar command (admin only) - publish case as quiz poll."""
     if not _is_admin(update.effective_user.id):
-        return  # Silently ignore for non-admins
         return ConversationHandler.END
 
     # Double-publish protection
@@ -1348,7 +1367,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return  # Silently ignore for non-admins
 
     admin_text = (
-        "🔧 **Comandos de Administrador:**\n\n"
+        "🔧 <b>Comandos de Administrador:</b>\n\n"
         "/caso - Crear caso clínico\n"
         "/preview - Ver cómo queda en la Mini App\n"
         "/publicar - Publicar en el canal\n"
@@ -1356,7 +1375,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/editar_caso - Editar caso ya publicado\n"
         "/cancelar - Cancelar\n"
         "/admin - Ver este menú\n\n"
-        "**Flujo:**\n"
+        "<b>Flujo:</b>\n"
         "1. /caso → Pega el caso completo\n"
         "2. (Opcional) Envía fotos\n"
         "3. /preview → Revisa en la Mini App\n"
@@ -1364,7 +1383,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     )
     await update.message.reply_text(
         admin_text,
-        parse_mode="Markdown",
+        parse_mode="HTML",
         reply_markup=_admin_keyboard(),
     )
 
@@ -1555,19 +1574,23 @@ def main() -> None:
             states={
                 STATE_EDIT_PUBLISHED_NUMBER: [
                     CommandHandler("cancelar", edit_published_cancelar),
+                    MessageHandler(_BTN_CANCELAR, edit_published_cancelar),
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_published_number_handler),
                 ],
                 STATE_EDIT_PUBLISHED_CASE: [
                     CommandHandler("cancelar", edit_published_cancelar),
+                    MessageHandler(_BTN_CANCELAR, edit_published_cancelar),
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_published_case_handler),
                 ],
                 STATE_EDIT_PUBLISHED_CONFIRM: [
                     CallbackQueryHandler(edit_published_confirm_callback, pattern="^edit_pub_"),
                     CommandHandler("cancelar", edit_published_cancelar),
+                    MessageHandler(_BTN_CANCELAR, edit_published_cancelar),
                 ],
             },
             fallbacks=[
                 CommandHandler("cancelar", edit_published_cancelar),
+                MessageHandler(_BTN_CANCELAR, edit_published_cancelar),
             ],
             per_user=True,
         )
