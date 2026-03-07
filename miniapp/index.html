@@ -33,7 +33,7 @@
 
             --font-title: 'Neue Kabel', 'Josefin Sans', 'Helvetica Neue', sans-serif;
             --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
-            --font-size-base: 16px;
+            --font-size-base: 15px;
         }
 
         html, body {
@@ -66,7 +66,9 @@
             display: flex; align-items: center; justify-content: space-between;
             padding: 18px 0 14px;
         }
-        .header-left { display: flex; align-items: center; gap: 10px; }
+        .header-left { display: flex; align-items: center; gap: 6px; }
+        .header-birrete { width: 24px; height: 24px; flex-shrink: 0; }
+        .header-birrete svg { width: 100%; height: 100%; display: block; }
         .header-logo { height: 17px; width: auto; display: block; }
         .header-divider { width: 1px; height: 14px; background: var(--border); }
         .header-case {
@@ -111,10 +113,11 @@
 
         .hero-title {
             font-family: var(--font-title);
-            font-size: 23px; font-weight: 400;
+            font-size: 23px; font-weight: 300;
             color: var(--navy-soft);
             line-height: 1.35;
             margin-bottom: 20px;
+            text-transform: uppercase;
         }
 
         /* Answer strip */
@@ -133,6 +136,7 @@
             border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
             flex-shrink: 0;
+            padding-top: 2px;
         }
         .answer-text {
             font-family: var(--font-body);
@@ -150,11 +154,11 @@
             font-family: var(--font-body);
             font-size: var(--font-size-base);
             color: var(--text-body);
-            line-height: 1.75;
+            line-height: 1.5;
             text-align: justify;
             transition: font-size 0.2s ease;
         }
-        .justification p { margin-bottom: 18px; }
+        .justification p { margin-bottom: 14px; }
         .justification p:last-child { margin-bottom: 0; }
 
         /* Drop cap */
@@ -202,9 +206,9 @@
         .tip-label-accent { color: var(--primary); }
         .tip-text {
             font-family: var(--font-body);
-            font-size: 16px;
+            font-size: 15px;
             color: var(--text-body);
-            line-height: 1.75;
+            line-height: 1.5;
             padding-left: 16px;
             border-left: 3px solid var(--primary);
             text-align: justify;
@@ -546,6 +550,7 @@
             // ── HEADER ──
             html += '<div class="header">';
             html += '<div class="header-left">';
+            html += '<div class="header-birrete"><svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="10" fill="#18828C"/><g transform="translate(4,7) scale(0.5)"><polygon points="32,6 4,22 32,38 60,22" fill="white"/><path d="M16 24v10c0 5.5 7.2 10 16 10s16-4.5 16-10V24" fill="rgba(255,255,255,0.9)"/><rect x="54" y="22" width="3" height="20" rx="1.5" fill="white"/><circle cx="55.5" cy="44" r="3" fill="white"/></g></svg></div>';
             html += '<img class="header-logo" src="https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/acamedics-logo.png?v=2" alt="ACAMEDICS" onerror="this.style.display=\'none\';this.parentNode.insertAdjacentHTML(\'afterbegin\',\'<span style=font-family:var(--font-title);font-weight:700;font-size:14px;color:var(--navy)>ACAMEDICS</span>\');">';
             html += '<div class="header-divider"></div>';
             html += '<span class="header-case">Caso #'+esc(String(caseNum))+'</span>';
@@ -707,12 +712,12 @@
 
             // Font size cycle: [-2, 0, 2, 4]
             const sizes = [-2, 0, 2, 4];
-            let sizeIdx = 1; // start at 0 offset (16px)
+            let sizeIdx = 1; // start at 0 offset (15px)
             const fc = document.getElementById('fontCycle');
             if (fc) fc.addEventListener('click', e => {
                 e.stopPropagation();
                 sizeIdx = (sizeIdx + 1) % sizes.length;
-                const newSize = 16 + sizes[sizeIdx];
+                const newSize = 15 + sizes[sizeIdx];
                 document.documentElement.style.setProperty('--font-size-base', newSize + 'px');
                 fc.classList.toggle('active', sizeIdx !== 1);
             });
