@@ -57,6 +57,31 @@ STATE_EDIT_PUBLISHED_CASE = 7
 STATE_EDIT_PUBLISHED_CONFIRM = 8
 
 
+def restore_formatting(text: str, entities) -> str:
+    """Re-insert markdown markers from Telegram MessageEntity objects.
+    Telegram strips **bold** and *italic* when sending, storing them as entities.
+    This function restores the markers so they can be rendered in the Mini App."""
+    if not entities:
+        return text
+    # Collect insertions: (offset, marker_before, marker_after)
+    insertions = []
+    for ent in entities:
+        if ent.type == "bold":
+            insertions.append((ent.offset, ent.length, "**"))
+        elif ent.type == "italic":
+            insertions.append((ent.offset, ent.length, "*"))
+    if not insertions:
+        return text
+    # Sort by offset descending so insertions don't shift positions
+    insertions.sort(key=lambda x: x[0], reverse=True)
+    result = text
+    for offset, length, marker in insertions:
+        end = offset + length
+        result = result[:end] + marker + result[end:]
+        result = result[:offset] + marker + result[offset:]
+    return result
+
+
 def case_display_num(uuid_str: str) -> int:
     """Generate a consistent display number (1000-3000) from UUID hash.
     Must match the JavaScript version in index.html exactly."""
@@ -378,8 +403,11 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         # Show typing indicator while parsing
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
+        # Restore bold/italic markers from Telegram entities before parsing
+        raw_text = restore_formatting(update.message.text, update.message.entities)
+
         # Parse the case
-        parsed = parse_case(update.message.text)
+        parsed = parse_case(raw_text)
 
         if not parsed.parsed_ok:
             error_text = "❌ Error al parsear el caso:\n\n"
@@ -840,22 +868,25 @@ async def edit_published_case_handler(update: Update, context: ContextTypes.DEFA
     if not update.message:
         return STATE_EDIT_PUBLISHED_CASE
 
-    raw_text = update.message.text.strip()
+    raw_text_plain = update.message.text.strip()
 
     # Ignore known keyboard button texts
     _known_buttons = {"caso", "preview", "publicar", "cancelar", "editar", "editar caso", "admin"}
-    if raw_text.lower() in _known_buttons:
+    if raw_text_plain.lower() in _known_buttons:
         await update.message.reply_text(
             "⚠️ Estás editando un caso publicado.\n"
             "Envía el caso completo o /cancelar para salir."
         )
         return STATE_EDIT_PUBLISHED_CASE
 
-    if len(raw_text) < 50:
+    if len(raw_text_plain) < 50:
         await update.message.reply_text(
             "⚠️ El texto es muy corto. Envía el caso completo."
         )
         return STATE_EDIT_PUBLISHED_CASE
+
+    # Restore bold/italic markers from Telegram entities
+    raw_text = restore_formatting(update.message.text, update.message.entities).strip()
 
     try:
         parsed = parse_case(raw_text)
@@ -1658,6 +1689,9 @@ def main() -> None:
             # Don't process commands
             if text.startswith("/"):
                 return
+
+            # Restore bold/italic markers from Telegram entities
+            text = restore_formatting(text, update.edited_message.entities)
 
             try:
                 parsed = parse_case(text)
