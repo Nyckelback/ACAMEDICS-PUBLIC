@@ -613,6 +613,9 @@
 
         function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
         function mdBold(s) {
+            // Fix misplaced bold markers: letter**rest** → **letter rest**
+            // Catches 1-3 letters before ** that should be inside the bold
+            s = s.replace(/(^|[\s(,;:])([a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]{1,3})\*\*([^\*]+?)\*\*/g, '$1**$2$3**');
             // Convert **text** to <b>text</b> AFTER esc() so it's safe
             // Also convert *text* (single) to <i>text</i> for italic
             return s
