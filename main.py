@@ -60,16 +60,41 @@ STATE_EDIT_PUBLISHED_CONFIRM = 8
 def restore_formatting(text: str, entities) -> str:
     """Re-insert markdown markers from Telegram MessageEntity objects.
     Telegram strips **bold** and *italic* when sending, storing them as entities.
-    This function restores the markers so they can be rendered in the Mini App."""
+    This function restores the markers so they can be rendered in the Mini App.
+
+    IMPORTANT: Telegram Bot API uses UTF-16 offsets for entities, but Python
+    strings use Unicode codepoints. Characters above U+FFFF (emojis like 😎😄)
+    take 2 UTF-16 code units but only 1 Python char. We must convert offsets
+    to avoid misplacing markers (e.g. 'm**iedo**' instead of '**miedo**')."""
     if not entities:
         return text
-    # Collect insertions: (offset, marker_before, marker_after)
+
+    # Build UTF-16 offset → Python index mapping
+    utf16_to_py = {}
+    utf16_pos = 0
+    for py_pos, char in enumerate(text):
+        utf16_to_py[utf16_pos] = py_pos
+        # Supplementary chars (emoji etc.) = 2 UTF-16 code units, 1 Python char
+        if ord(char) > 0xFFFF:
+            utf16_pos += 2
+        else:
+            utf16_pos += 1
+    utf16_to_py[utf16_pos] = len(text)  # end sentinel
+
+    # Collect insertions with corrected Python offsets
     insertions = []
     for ent in entities:
         if ent.type == "bold":
-            insertions.append((ent.offset, ent.length, "**"))
+            marker = "**"
         elif ent.type == "italic":
-            insertions.append((ent.offset, ent.length, "*"))
+            marker = "*"
+        else:
+            continue
+        py_offset = utf16_to_py.get(ent.offset, ent.offset)
+        py_end = utf16_to_py.get(ent.offset + ent.length, ent.offset + ent.length)
+        py_length = py_end - py_offset
+        insertions.append((py_offset, py_length, marker))
+
     if not insertions:
         return text
     # Sort by offset descending so insertions don't shift positions
