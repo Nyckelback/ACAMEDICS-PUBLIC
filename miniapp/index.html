@@ -56,8 +56,7 @@
             --accent: #E05A8D;
             --accent-subtle: rgba(224,90,141,0.10);
         }
-        [data-theme="dark"] .answer-strip { background: #1B7A83; }
-        [data-theme="dark"] .answer-letter { background: rgba(255,255,255,0.14); }
+        /* answer-section uses CSS vars, auto-adapts to dark mode */
         [data-theme="dark"] .tip-section { background: rgba(32,164,176,0.06); }
         [data-theme="dark"] .tip-text { border-left-color: var(--primary); }
         [data-theme="dark"] .bib-item { border-bottom-color: rgba(255,255,255,0.06); }
@@ -176,28 +175,30 @@
             text-transform: uppercase;
         }
 
-        /* Answer strip */
-        .answer-strip {
+        /* Answer callout */
+        .answer-section {
+            background: var(--primary-subtle);
+            border-left: 4px solid;
+            border-image: linear-gradient(180deg, var(--primary), var(--accent)) 1;
+            padding: 16px;
             display: flex; align-items: center; gap: 14px;
-            background: var(--primary);
-            border-radius: 10px;
-            padding: 14px 16px;
         }
         .answer-letter {
             font-family: var(--font-title);
             font-size: 20px; font-weight: 700;
+            line-height: 36px;
+            text-align: center;
             color: #FFFFFF;
-            background: rgba(255,255,255,0.18);
-            width: 34px; height: 34px;
-            border-radius: 8px;
-            display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            width: 36px; height: 36px;
+            border-radius: 10px;
             flex-shrink: 0;
-            padding-top: 2px;
+            box-shadow: 0 2px 8px rgba(26,162,174,0.30);
         }
         .answer-text {
             font-family: var(--font-body);
-            font-size: 15px; font-weight: 500;
-            color: #FFFFFF;
+            font-size: 15px; font-weight: 600;
+            color: var(--navy);
             line-height: 1.4;
         }
 
@@ -210,8 +211,8 @@
             font-family: var(--font-body);
             font-size: var(--font-size-base);
             color: var(--text-body);
-            line-height: 1.38;
-            text-align: justify;
+            line-height: 1.32;
+            text-align: left;
             transition: font-size 0.2s ease;
         }
         .justification p { margin-bottom: 14px; }
@@ -264,10 +265,10 @@
             font-family: var(--font-body);
             font-size: var(--font-size-base);
             color: var(--text-body);
-            line-height: 1.38;
+            line-height: 1.32;
             padding-left: 16px;
             border-left: 3px solid var(--primary);
-            text-align: justify;
+            text-align: left;
         }
 
         /* ═══════════════════════════════════════════
@@ -488,7 +489,7 @@
         ═══════════════════════════════════════════ */
         @media (max-width: 420px) {
             .hero-title { font-size: 22px; }
-            .answer-letter { width: 30px; height: 30px; font-size: 17px; }
+            .answer-letter { width: 32px; height: 32px; line-height: 32px; font-size: 18px; }
             .answer-text { font-size: 14px; }
         }
         @media (min-width: 768px) {
@@ -686,7 +687,7 @@
             html += '</button></div>';
             html += '</div>';
             if (d.correct_letter && d.correct_text) {
-                html += '<div class="answer-strip">';
+                html += '<div class="answer-section">';
                 html += '<div class="answer-letter">'+esc(d.correct_letter.toUpperCase())+'</div>';
                 html += '<div class="answer-text">'+esc(d.correct_text)+'</div>';
                 html += '</div>';
