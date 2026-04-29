@@ -33,7 +33,7 @@
 
             --font-title: 'Neue Kabel', 'Josefin Sans', 'Helvetica Neue', sans-serif;
             --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
-            --font-size-base: 15px;
+            --font-size-base: 16px;
         }
 
         /* ═══════════════════════════════════════════
@@ -139,8 +139,8 @@
         .hero { padding: 24px 0 28px; }
 
         .eyebrow-row {
-            display: flex; align-items: flex-start; justify-content: space-between;
-            gap: 12px; margin-bottom: 20px;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; margin-bottom: 24px;
         }
         .eyebrow-row .hero-title { margin-bottom: 0; }
 
@@ -168,19 +168,19 @@
 
         .hero-title {
             font-family: var(--font-title);
-            font-size: 23px; font-weight: 300;
+            font-size: 20px; font-weight: 300;
             color: var(--navy-soft);
             line-height: 1.35;
-            margin-bottom: 20px;
+            letter-spacing: 0.3px;
+            margin-bottom: 18px;
             text-transform: uppercase;
         }
 
         /* Answer callout */
         .answer-section {
             background: var(--primary-subtle);
-            border-left: 4px solid;
-            border-image: linear-gradient(180deg, var(--primary), var(--accent)) 1;
-            padding: 16px;
+            padding: 16px 20px;
+            margin: 0 -20px;
             display: flex; align-items: center; gap: 14px;
         }
         .answer-letter {
@@ -189,15 +189,14 @@
             line-height: 36px;
             text-align: center;
             color: #FFFFFF;
-            background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+            background: var(--primary);
             width: 36px; height: 36px;
             border-radius: 10px;
             flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(26,162,174,0.30);
         }
         .answer-text {
             font-family: var(--font-body);
-            font-size: 15px; font-weight: 600;
+            font-size: var(--font-size-base); font-weight: 600;
             color: var(--navy);
             line-height: 1.4;
         }
@@ -205,7 +204,7 @@
         /* ═══════════════════════════════════════════
            JUSTIFICATION
         ═══════════════════════════════════════════ */
-        .justification-section { padding: 28px 0 24px; }
+        .justification-section { padding: 20px 0 24px; }
 
         .justification {
             font-family: var(--font-body);
@@ -488,7 +487,7 @@
            RESPONSIVE
         ═══════════════════════════════════════════ */
         @media (max-width: 420px) {
-            .hero-title { font-size: 22px; }
+            .hero-title { font-size: 19px; }
             .answer-letter { width: 32px; height: 32px; line-height: 32px; font-size: 18px; }
             .answer-text { font-size: 14px; }
         }
@@ -678,7 +677,7 @@
             // ── HERO: title + answer ──
             html += '<div class="hero">';
             html += '<div class="eyebrow-row">';
-            html += '<h2 class="hero-title">Análisis y Fundamentación<br>del Caso Clínico</h2>';
+            html += '<h2 class="hero-title">Análisis y fundamentación<br>del caso clínico</h2>';
             html += '<div class="ctrl-btns">';
             html += '<button class="font-btn" id="fontCycle">Aa</button>';
             html += '<button class="theme-btn" id="themeToggle" title="Cambiar tema">';
