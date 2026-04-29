@@ -12,6 +12,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 import pytz
+import re as regex_module
 
 from telegram import (
     Update,
@@ -55,6 +56,7 @@ STATE_EDIT_BIB = 5
 STATE_EDIT_PUBLISHED_NUMBER = 6
 STATE_EDIT_PUBLISHED_CASE = 7
 STATE_EDIT_PUBLISHED_CONFIRM = 8
+STATE_SCHEDULE_DATETIME = 9
 
 
 def restore_formatting(text: str, entities) -> str:
@@ -120,6 +122,113 @@ def case_display_num(uuid_str: str) -> int:
             h -= 0x100000000  # Convert to signed 32-bit
     return 1000 + (abs(h) % 2001)
 
+
+def parse_schedule_datetime(text: str) -> Optional[datetime]:
+    """Parse schedule datetime in Colombian-style formats.
+    Supports:
+    - hoy 7:00 or hoy 14:30
+    - mañana 7:00 or mañana 14:30
+    - 29/04 7:00 (dd/mm format, assumes current year, or next year if date already passed)
+    - lunes 7:00, martes 14:30 etc. (next occurrence of that weekday)
+    - 7:00 or 14:30 (just time = today if in future, tomorrow if already passed)
+
+    All times are in America/Bogota timezone.
+    Returns None if can't parse.
+    """
+    tz = pytz.timezone(Config.TZ)
+    now = datetime.now(tz)
+    text = text.strip().lower()
+
+    # Parse time part
+    time_match = regex_module.search(r'(\d{1,2}):(\d{2})', text)
+    if not time_match:
+        return None
+
+    hour = int(time_match.group(1))
+    minute = int(time_match.group(2))
+
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        return None
+
+    # Extract date part (everything before the time)
+    date_part = text[:time_match.start()].strip()
+
+    # Today
+    if 'hoy' in date_part:
+        scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if scheduled <= now:
+            # Time already passed today, so it's in the past
+            return None
+        return scheduled
+
+    # Tomorrow
+    if 'mañana' in date_part:
+        tomorrow = now + timedelta(days=1)
+        scheduled = tomorrow.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return scheduled
+
+    # Just time (no date prefix)
+    if not date_part:
+        scheduled = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if scheduled > now:
+            return scheduled
+        # Time already passed today, schedule for tomorrow
+        tomorrow = now + timedelta(days=1)
+        scheduled = tomorrow.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        return scheduled
+
+    # Weekday name (lunes, martes, etc.)
+    weekday_names = {
+        'lunes': 0, 'monday': 0,
+        'martes': 1, 'tuesday': 1,
+        'miércoles': 2, 'miercoles': 2, 'wednesday': 2,
+        'jueves': 3, 'thursday': 3,
+        'viernes': 4, 'friday': 4,
+        'sábado': 5, 'sabado': 5, 'saturday': 5,
+        'domingo': 6, 'sunday': 6,
+    }
+
+    for day_name, day_num in weekday_names.items():
+        if day_name in date_part:
+            # Find next occurrence of this weekday
+            days_ahead = day_num - now.weekday()
+            if days_ahead <= 0:  # Target day already happened this week
+                days_ahead += 7
+            next_date = now + timedelta(days=days_ahead)
+            scheduled = next_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            return scheduled
+
+    # dd/mm format (29/04 7:00)
+    date_match = regex_module.search(r'(\d{1,2})/(\d{1,2})', date_part)
+    if date_match:
+        day = int(date_match.group(1))
+        month = int(date_match.group(2))
+        year = now.year
+
+        try:
+            # Try current year
+            scheduled = datetime(year, month, day, hour, minute, 0, tzinfo=tz)
+            if scheduled > now:
+                return scheduled
+            # If already passed, try next year
+            scheduled = datetime(year + 1, month, day, hour, minute, 0, tzinfo=tz)
+            return scheduled
+        except ValueError:
+            return None
+
+    return None
+
+
+def format_scheduled_datetime(dt: datetime) -> str:
+    """Format a datetime for display in America/Bogota timezone."""
+    tz = pytz.timezone(Config.TZ)
+    if dt.tzinfo is None:
+        dt = tz.localize(dt)
+    else:
+        dt = dt.astimezone(tz)
+    return dt.strftime("%d/%m %H:%M")
+
+
 # Supabase client
 supabase = None
 app = None
@@ -130,6 +239,7 @@ def _admin_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
         [KeyboardButton("Caso"), KeyboardButton("Preview")],
         [KeyboardButton("Publicar"), KeyboardButton("Cancelar")],
+        [KeyboardButton("🕐 Programar"), KeyboardButton("📋 Cola")],
         [KeyboardButton("✏️ Editar Pendiente"), KeyboardButton("📝 Editar Publicado")],
         [KeyboardButton("Admin")],
     ]
@@ -522,6 +632,9 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 [
                     InlineKeyboardButton("👁️ Preview", callback_data="action_preview"),
                     InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
+                ],
+                [
+                    InlineKeyboardButton("🕐 Programar", callback_data="action_programar"),
                 ]
             ]
             score_msg = await update.message.reply_text(
@@ -823,6 +936,214 @@ async def edit_bib_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         "📸 Fotos | /preview | /publicar."
     )
     return STATE_WAITING_IMAGES
+
+
+# ═══════════════════════════════════════════
+# SCHEDULED PUBLISHING FLOW
+# ═══════════════════════════════════════════
+
+async def programar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle /programar command - schedule case publication."""
+    if not _is_admin(update.effective_user.id):
+        return ConversationHandler.END
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
+    # Check if there's a pending case
+    pending_case = context.user_data.get("pending_case")
+    if not pending_case:
+        await update.message.reply_text("❌ No hay caso. Usa /caso primero.")
+        return ConversationHandler.END
+
+    # Auto-save to DB if no preview_uuid exists
+    preview_uuid = context.user_data.get("preview_uuid")
+    if not preview_uuid:
+        try:
+            preview_uuid = supabase.save_case(pending_case)
+            context.user_data["preview_uuid"] = preview_uuid
+            logger.info(f"Auto-saved case {preview_uuid} for scheduling")
+        except Exception as e:
+            logger.error(f"Error auto-saving case for schedule: {e}")
+            await update.message.reply_text("❌ Error al guardar el caso.")
+            return ConversationHandler.END
+
+    await update.message.reply_text(
+        "📅 ¿Cuándo publicar?\n\n"
+        "Formatos:\n"
+        "• hoy 7:00\n"
+        "• mañana 14:30\n"
+        "• 29/04 7:00\n"
+        "• lunes 7:00\n\n"
+        "O /cancelar"
+    )
+    return STATE_SCHEDULE_DATETIME
+
+
+async def schedule_datetime_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Handle date/time input for scheduling."""
+    if not update.message:
+        return STATE_SCHEDULE_DATETIME
+
+    text = update.message.text.strip()
+
+    # Parse the date/time
+    scheduled_dt = parse_schedule_datetime(text)
+
+    if not scheduled_dt:
+        await update.message.reply_text(
+            "❌ No entendí la fecha. Formatos válidos:\n\n"
+            "• hoy 7:00\n"
+            "• mañana 14:30\n"
+            "• 29/04 7:00\n"
+            "• lunes 7:00\n\n"
+            "O /cancelar"
+        )
+        return STATE_SCHEDULE_DATETIME
+
+    # Check if date is in the past
+    tz = pytz.timezone(Config.TZ)
+    now = datetime.now(tz)
+    if scheduled_dt <= now:
+        await update.message.reply_text(
+            "❌ Esa hora ya pasó. Por favor, elige una hora futura."
+        )
+        return STATE_SCHEDULE_DATETIME
+
+    try:
+        # Schedule the case
+        case_uuid = context.user_data.get("preview_uuid")
+        user_id = update.effective_user.id
+
+        supabase.schedule_case(case_uuid, scheduled_dt, user_id)
+
+        formatted_date = format_scheduled_datetime(scheduled_dt)
+        await update.message.reply_text(
+            f"✅ Caso programado para {formatted_date}\n\n"
+            "Se publicará automáticamente. Usa /cola para ver la cola.",
+            reply_markup=_admin_keyboard(),
+        )
+
+        # Clear user data
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    except Exception as e:
+        logger.error(f"Error scheduling case: {e}")
+        await update.message.reply_text(f"❌ Error al programar: {str(e)}")
+        return STATE_SCHEDULE_DATETIME
+
+
+async def cola_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /cola command - show scheduled publishing queue."""
+    if not _is_admin(update.effective_user.id):
+        return
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+
+    try:
+        queue = supabase.get_queue()
+
+        if not queue:
+            await update.message.reply_text("📋 La cola está vacía.")
+            return
+
+        # Format queue entries
+        buttons_list = []
+        message_text = "📋 <b>Cola de publicación</b>\n\n"
+        for i, entry in enumerate(queue, 1):
+            entry_id = entry.get("id")
+            scheduled_dt_str = entry.get("scheduled_datetime")
+            case_uuid = entry.get("case_id")
+
+            try:
+                if scheduled_dt_str:
+                    dt = datetime.fromisoformat(scheduled_dt_str.replace('Z', '+00:00'))
+                    tz = pytz.timezone(Config.TZ)
+                    dt = dt.astimezone(tz)
+                    formatted_time = dt.strftime("%d/%m %H:%M")
+                else:
+                    formatted_time = "N/A"
+            except Exception:
+                formatted_time = scheduled_dt_str or "N/A"
+
+            try:
+                case_info = supabase.get_scheduled_post(case_uuid) if case_uuid else {}
+                vignette = case_info.get("vignette", "")[:60].replace("\n", " ")
+            except Exception:
+                vignette = "(sin viñeta)"
+
+            message_text += f"{i}. 🕐 {formatted_time}\n«{vignette}»\n\n"
+
+            buttons_list.append([
+                InlineKeyboardButton("👁️ Preview", callback_data=f"cola_preview_{entry_id}"),
+                InlineKeyboardButton("🗑️ Eliminar", callback_data=f"cola_delete_{entry_id}"),
+            ])
+
+        message_text += f"\nTotal: {len(queue)} caso(s)"
+
+        keyboard = InlineKeyboardMarkup(buttons_list[:5])  # Limit to 5 buttons per message
+
+        await update.message.reply_text(
+            message_text,
+            parse_mode="HTML",
+            reply_markup=keyboard if buttons_list else None,
+        )
+
+    except Exception as e:
+        logger.error(f"Error getting queue: {e}")
+        await update.message.reply_text(f"❌ Error al obtener la cola: {str(e)}")
+
+
+async def cola_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle cola preview and delete callbacks."""
+    query = update.callback_query
+
+    if query.data.startswith("cola_preview_"):
+        entry_id = query.data.replace("cola_preview_", "")
+        await query.answer("⏳ Cargando preview...")
+
+        try:
+            # Get the scheduled entry to get case_id
+            entry = supabase.client.table("scheduled_posts").select("case_id").eq("id", entry_id).execute()
+
+            if entry.data:
+                case_uuid = entry.data[0]["case_id"]
+                miniapp_short_name = os.getenv("MINIAPP_SHORT_NAME", "justificacion")
+                preview_url = f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={case_uuid}"
+
+                keyboard = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("👁️ VER PREVIEW", url=preview_url)]
+                ])
+
+                await query.edit_message_reply_markup(reply_markup=keyboard)
+            else:
+                await query.answer("❌ No se encontró el caso", show_alert=True)
+
+        except Exception as e:
+            logger.error(f"Error showing cola preview: {e}")
+            await query.answer("❌ Error al mostrar preview", show_alert=True)
+
+    elif query.data.startswith("cola_delete_"):
+        entry_id = query.data.replace("cola_delete_", "")
+
+        try:
+            supabase.cancel_scheduled(entry_id)
+            await query.edit_message_text("🗑️ Eliminado")
+            await query.answer("✅ Programación cancelada")
+        except Exception as e:
+            logger.error(f"Error deleting scheduled post: {e}")
+            await query.answer("❌ Error al eliminar", show_alert=True)
+
+
+async def desprogramar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /desprogramar command - show usage info."""
+    if not _is_admin(update.effective_user.id):
+        return
+
+    await update.message.reply_text(
+        "🗑️ Usa /cola para ver la cola de publicación y usar los botones 🗑️ para eliminar casos programados.",
+        reply_markup=_admin_keyboard(),
+    )
 
 
 # ═══════════════════════════════════════════
@@ -1164,7 +1485,7 @@ async def edit_published_cancelar(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Handle inline button callbacks for Preview and Publicar.
+    """Handle inline button callbacks for Preview, Publicar, and Programar.
     Uses query.answer() for toast notifications (top bar) instead of messages."""
     query = update.callback_query
 
@@ -1186,6 +1507,38 @@ async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_T
             return ConversationHandler.END
         await query.answer("⏳ Publicando en el canal...")
         return await _do_publicar(query, context)
+
+    elif query.data == "action_programar":
+        pending_case = context.user_data.get("pending_case")
+        if not pending_case:
+            await query.answer("❌ No hay caso pendiente", show_alert=True)
+            return STATE_WAITING_IMAGES
+
+        # Auto-save to DB if no preview_uuid exists
+        preview_uuid = context.user_data.get("preview_uuid")
+        if not preview_uuid:
+            try:
+                preview_uuid = supabase.save_case(pending_case)
+                context.user_data["preview_uuid"] = preview_uuid
+            except Exception as e:
+                logger.error(f"Error auto-saving case: {e}")
+                await query.answer("❌ Error al guardar el caso", show_alert=True)
+                return STATE_WAITING_IMAGES
+
+        # Send a NEW message asking for date/time
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="📅 ¿Cuándo publicar?\n\n"
+                 "Formatos:\n"
+                 "• hoy 7:00\n"
+                 "• mañana 14:30\n"
+                 "• 29/04 7:00\n"
+                 "• lunes 7:00\n\n"
+                 "O /cancelar"
+        )
+
+        await query.answer("⏳ Dime cuándo publicar...")
+        return STATE_SCHEDULE_DATETIME
 
     await query.answer()
     return STATE_WAITING_IMAGES
@@ -1539,13 +1892,16 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/publicar - Publicar en el canal\n"
         "/editar - Editar secciones del caso\n"
         "/editar_caso - Editar caso ya publicado\n"
+        "/programar - Programar publicación\n"
+        "/cola - Ver cola de programados\n"
+        "/desprogramar - Desprogramar caso\n"
         "/cancelar - Cancelar\n"
         "/admin - Ver este menú\n\n"
         "<b>Flujo:</b>\n"
         "1. /caso → Pega el caso completo\n"
         "2. (Opcional) Envía fotos\n"
         "3. /preview → Revisa en la Mini App\n"
-        "4. /publicar → Se envía al canal\n"
+        "4. /publicar → Se envía al canal o /programar → Programa para después\n"
     )
     await update.message.reply_text(
         admin_text,
@@ -1633,6 +1989,9 @@ async def post_init(application) -> None:
         BotCommand("publicar", "📢 Publicar en el canal"),
         BotCommand("editar", "✏️ Editar secciones del caso"),
         BotCommand("editar_caso", "📝 Editar caso publicado"),
+        BotCommand("programar", "🕐 Programar publicación"),
+        BotCommand("cola", "📋 Ver cola de programados"),
+        BotCommand("desprogramar", "🗑️ Desprogramar caso"),
         BotCommand("cancelar", "🗑️ Cancelar caso pendiente"),
         BotCommand("admin", "🔧 Panel de administrador"),
         BotCommand("help", "ℹ️ Ayuda"),
@@ -1648,6 +2007,13 @@ async def post_init(application) -> None:
             logger.warning(f"Could not set admin commands for {admin_id}: {e}")
 
     logger.info("Bot commands menu registered")
+
+    # Initialize and start the scheduler for automatic publishing
+    from scheduler import init_scheduler, on_startup, scheduler_loop
+    init_scheduler(application, supabase)
+    await on_startup()
+    asyncio.ensure_future(scheduler_loop())
+    logger.info("Scheduler started")
 
 
 def main() -> None:
@@ -1674,6 +2040,8 @@ def main() -> None:
         _BTN_PUBLICAR = filters.Regex(r"(?i)^publicar$") & ~filters.UpdateType.EDITED_MESSAGE
         _BTN_CANCELAR = filters.Regex(r"(?i)^cancelar$") & ~filters.UpdateType.EDITED_MESSAGE
         _BTN_EDITAR = filters.Regex(r"(?i)^(editar|✏️\s*editar\s*pendiente)$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_PROGRAMAR = filters.Regex(r"(?i)^(🕐\s*programar|programar)$") & ~filters.UpdateType.EDITED_MESSAGE
+        _BTN_COLA = filters.Regex(r"(?i)^(📋\s*cola|cola)$") & ~filters.UpdateType.EDITED_MESSAGE
 
         # Define _BTN_EDITAR_CASO early so it can be used in case_conv too
         _BTN_EDITAR_CASO = filters.Regex(r"(?i)^(editar\s*caso|📝\s*editar\s*publicado)$") & ~filters.UpdateType.EDITED_MESSAGE
@@ -1717,12 +2085,14 @@ def main() -> None:
                     CommandHandler("editar_tip", editar_tip_command),
                     CommandHandler("editar_just", editar_just_command),
                     CommandHandler("editar_bib", editar_bib_command),
+                    CommandHandler("programar", programar_command),
                     CommandHandler("cancelar", cancelar_command),
                     CommandHandler("editar_caso", _exit_to_edit_published),
                     # Keyboard button texts (without slash) - BEFORE generic text handler
                     MessageHandler(_BTN_CASO, caso_command),
                     MessageHandler(_BTN_PREVIEW, preview_command),
                     MessageHandler(_BTN_PUBLICAR, publicar_command),
+                    MessageHandler(_BTN_PROGRAMAR, programar_command),
                     MessageHandler(_BTN_CANCELAR, cancelar_command),
                     MessageHandler(_BTN_EDITAR, editar_command),
                     MessageHandler(_BTN_EDITAR_CASO, _exit_to_edit_published),
@@ -1743,6 +2113,11 @@ def main() -> None:
                     CommandHandler("cancelar", cancelar_command),
                     MessageHandler(_BTN_CANCELAR, cancelar_command),
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_bib_handler),
+                ],
+                STATE_SCHEDULE_DATETIME: [
+                    CommandHandler("cancelar", cancelar_command),
+                    MessageHandler(_BTN_CANCELAR, cancelar_command),
+                    MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, schedule_datetime_handler),
                 ],
             },
             fallbacks=[
@@ -1800,11 +2175,18 @@ def main() -> None:
         app.add_handler(CommandHandler("cancelar", fallback_cancelar))
         app.add_handler(CommandHandler("preview", fallback_preview))
         app.add_handler(CommandHandler("publicar", fallback_publicar))
+        app.add_handler(CommandHandler("cola", cola_command))
+        app.add_handler(CommandHandler("desprogramar", desprogramar_command))
+
         # Keyboard button text fallbacks (without slash)
         app.add_handler(MessageHandler(_BTN_CANCELAR, fallback_cancelar))
         app.add_handler(MessageHandler(_BTN_PREVIEW, fallback_preview))
         app.add_handler(MessageHandler(_BTN_PUBLICAR, fallback_publicar))
+        app.add_handler(MessageHandler(_BTN_COLA, cola_command))
         app.add_handler(MessageHandler(filters.Regex(r"(?i)^admin$"), admin_command))
+
+        # Cola callbacks
+        app.add_handler(CallbackQueryHandler(cola_callback_handler, pattern="^cola_"))
 
         # Fallback handlers for photos/documents sent outside conversation
         # (e.g., after bot restart when ConversationHandler state is lost)
@@ -1896,6 +2278,9 @@ def main() -> None:
                     [
                         InlineKeyboardButton("👁️ Preview", callback_data="action_preview"),
                         InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
+                    ],
+                    [
+                        InlineKeyboardButton("🕐 Programar", callback_data="action_programar"),
                     ]
                 ]
 
