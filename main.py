@@ -229,6 +229,48 @@ def format_scheduled_datetime(dt: datetime) -> str:
     return dt.strftime("%d/%m %H:%M")
 
 
+def calculate_next_queue_slot() -> datetime:
+    """Calculate the next available auto-queue slot.
+    1. Get queue settings (default_hour, active_days)
+    2. Find the latest pending queue entry's date
+    3. Next slot = that date + 1 day (skipping inactive days)
+    4. If no queue entries, start from tomorrow (or today if before default_hour)
+    """
+    tz = pytz.timezone(Config.TZ)
+    now = datetime.now(tz)
+
+    # Get settings
+    hour_str = supabase.get_setting("queue_default_hour", "07:00")
+    active_days = supabase.get_setting("queue_active_days", [1, 2, 3, 4, 5, 6])
+
+    hour, minute = map(int, hour_str.split(":"))
+
+    # Find the latest queued entry
+    last_queued = supabase.get_last_queued_date()
+
+    if last_queued:
+        # Start searching from the day AFTER the last queued entry
+        last_queued_local = last_queued.astimezone(tz)
+        candidate = last_queued_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        candidate += timedelta(days=1)
+    else:
+        # No queue entries: start from today (if before default hour) or tomorrow
+        today_slot = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        if today_slot > now:
+            candidate = today_slot
+        else:
+            candidate = today_slot + timedelta(days=1)
+
+    # Skip inactive days (isoweekday: 1=Mon, 7=Sun)
+    for _ in range(14):  # Safety: max 2 weeks lookahead
+        if candidate.isoweekday() in active_days:
+            return candidate
+        candidate += timedelta(days=1)
+
+    # Fallback
+    return candidate
+
+
 # Supabase client
 supabase = None
 app = None
@@ -635,6 +677,7 @@ async def case_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 ],
                 [
                     InlineKeyboardButton("🕐 Programar", callback_data="action_programar"),
+                    InlineKeyboardButton("📥 Cola", callback_data="action_autoqueue"),
                 ]
             ]
             score_msg = await update.message.reply_text(
@@ -699,8 +742,15 @@ async def image_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         context.user_data["pending_case"]["images"].append(image_url)
 
         image_count = len(context.user_data["pending_case"]["images"])
+
+        # Auto-update preview in Supabase if it exists
+        preview_uuid = context.user_data.get("preview_uuid")
+        if preview_uuid:
+            supabase.update_case(preview_uuid, context.user_data["pending_case"])
+
         await update.message.reply_text(
-            f"🖼️ Imagen {image_count} agregada. Envía más o /publicar"
+            f"🖼️ Imagen {image_count} agregada.{' (preview actualizado)' if preview_uuid else ''}\n"
+            f"Envía más fotos o usa los botones de arriba."
         )
         return STATE_WAITING_IMAGES
 
@@ -756,8 +806,15 @@ async def document_warning_handler(update: Update, context: ContextTypes.DEFAULT
             pending["images"].append(image_url)
 
             image_count = len(context.user_data["pending_case"]["images"])
+
+            # Auto-update preview in Supabase if it exists
+            preview_uuid = context.user_data.get("preview_uuid")
+            if preview_uuid:
+                supabase.update_case(preview_uuid, context.user_data["pending_case"])
+
             await update.message.reply_text(
-                f"🖼️ Imagen {image_count} agregada (calidad original). Envía más o /publicar"
+                f"🖼️ Imagen {image_count} agregada (calidad original).{' (preview actualizado)' if preview_uuid else ''}\n"
+                f"Envía más fotos o usa los botones de arriba."
             )
             return STATE_WAITING_IMAGES
 
@@ -1033,6 +1090,24 @@ async def schedule_datetime_handler(update: Update, context: ContextTypes.DEFAUL
         return STATE_SCHEDULE_DATETIME
 
 
+async def schedule_cancel_back(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel scheduling but keep the case — go back to STATE_WAITING_IMAGES."""
+    await update.message.reply_text(
+        "↩️ Programación cancelada. El caso sigue disponible.\n"
+        "Puedes enviar fotos, publicar, programar o agregar a cola.",
+        reply_markup=_admin_keyboard(),
+    )
+    return STATE_WAITING_IMAGES
+
+
+async def schedule_photo_warning(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Warn user they're in scheduling mode and can't add photos right now."""
+    await update.message.reply_text(
+        "⚠️ Estás en modo programar. Envía la fecha/hora o /cancelar para volver y agregar fotos."
+    )
+    return STATE_SCHEDULE_DATETIME
+
+
 async def cola_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /cola command - show scheduled publishing queue."""
     if not _is_admin(update.effective_user.id):
@@ -1047,41 +1122,45 @@ async def cola_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             await update.message.reply_text("📋 La cola está vacía.")
             return
 
+        tz = pytz.timezone(Config.TZ)
+        day_names = {1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie", 6: "Sáb", 7: "Dom"}
+
         # Format queue entries
         buttons_list = []
         message_text = "📋 <b>Cola de publicación</b>\n\n"
         for i, entry in enumerate(queue, 1):
             entry_id = entry.get("id")
-            scheduled_dt_str = entry.get("scheduled_datetime")
-            case_uuid = entry.get("case_id")
+            scheduled_at = entry.get("scheduled_at")
+            source = entry.get("source", "manual")
+            source_label = "🤖" if source == "queue" else "✋"
 
+            # Format date
             try:
-                if scheduled_dt_str:
-                    dt = datetime.fromisoformat(scheduled_dt_str.replace('Z', '+00:00'))
-                    tz = pytz.timezone(Config.TZ)
-                    dt = dt.astimezone(tz)
-                    formatted_time = dt.strftime("%d/%m %H:%M")
+                if scheduled_at:
+                    dt = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+                    dt_local = dt.astimezone(tz)
+                    day_name = day_names.get(dt_local.isoweekday(), "")
+                    formatted_time = f"{day_name} {dt_local.strftime('%d/%m %H:%M')}"
                 else:
                     formatted_time = "N/A"
             except Exception:
-                formatted_time = scheduled_dt_str or "N/A"
+                formatted_time = str(scheduled_at)[:16] if scheduled_at else "N/A"
 
-            try:
-                case_info = supabase.get_scheduled_post(case_uuid) if case_uuid else {}
-                vignette = case_info.get("vignette", "")[:60].replace("\n", " ")
-            except Exception:
-                vignette = "(sin viñeta)"
+            # Get vignette from joined cases data
+            case_data = entry.get("cases") or {}
+            vignette = (case_data.get("vignette") or "(sin viñeta)")[:60].replace("\n", " ")
 
-            message_text += f"{i}. 🕐 {formatted_time}\n«{vignette}»\n\n"
+            message_text += f"{i}. {source_label} {formatted_time}\n«{vignette}»\n\n"
 
             buttons_list.append([
                 InlineKeyboardButton("👁️ Preview", callback_data=f"cola_preview_{entry_id}"),
                 InlineKeyboardButton("🗑️ Eliminar", callback_data=f"cola_delete_{entry_id}"),
             ])
 
-        message_text += f"\nTotal: {len(queue)} caso(s)"
+        message_text += f"Total: {len(queue)} caso(s)\n"
+        message_text += "<i>🤖 = auto-cola  ✋ = manual</i>"
 
-        keyboard = InlineKeyboardMarkup(buttons_list[:5])  # Limit to 5 buttons per message
+        keyboard = InlineKeyboardMarkup(buttons_list[:10])
 
         await update.message.reply_text(
             message_text,
@@ -1142,6 +1221,111 @@ async def desprogramar_command(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await update.message.reply_text(
         "🗑️ Usa /cola para ver la cola de publicación y usar los botones 🗑️ para eliminar casos programados.",
+        reply_markup=_admin_keyboard(),
+    )
+
+
+async def hora_cola_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /hora_cola command - view or change the default queue hour."""
+    if not _is_admin(update.effective_user.id):
+        return
+
+    args = context.args
+    if not args:
+        # Show current setting
+        current = supabase.get_setting("queue_default_hour", "07:00")
+        await update.message.reply_text(
+            f"⏰ <b>Hora de publicación auto-cola:</b> {current}\n\n"
+            f"Para cambiarla: <code>/hora_cola HH:MM</code>\n"
+            f"Ejemplo: <code>/hora_cola 08:30</code>",
+            parse_mode="HTML",
+            reply_markup=_admin_keyboard(),
+        )
+        return
+
+    new_hour = args[0].strip()
+    # Validate HH:MM format
+    if not regex_module.match(r"^\d{1,2}:\d{2}$", new_hour):
+        await update.message.reply_text(
+            "❌ Formato inválido. Usa HH:MM (24h).\nEjemplo: /hora_cola 08:30",
+            reply_markup=_admin_keyboard(),
+        )
+        return
+
+    parts = new_hour.split(":")
+    h, m = int(parts[0]), int(parts[1])
+    if h < 0 or h > 23 or m < 0 or m > 59:
+        await update.message.reply_text(
+            "❌ Hora fuera de rango. Usa formato 24h (00:00 - 23:59).",
+            reply_markup=_admin_keyboard(),
+        )
+        return
+
+    # Normalize to HH:MM
+    normalized = f"{h:02d}:{m:02d}"
+    supabase.set_setting("queue_default_hour", normalized)
+
+    await update.message.reply_text(
+        f"✅ Hora de auto-cola actualizada: <b>{normalized}</b>\n\n"
+        f"Los próximos casos que agregues a la cola se programarán a esta hora.\n"
+        f"(Los que ya están en cola conservan su hora original.)",
+        parse_mode="HTML",
+        reply_markup=_admin_keyboard(),
+    )
+
+
+async def dias_cola_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle /dias_cola command - view or change active publishing days."""
+    if not _is_admin(update.effective_user.id):
+        return
+
+    day_names = {1: "Lunes", 2: "Martes", 3: "Miércoles", 4: "Jueves", 5: "Viernes", 6: "Sábado", 7: "Domingo"}
+    args = context.args
+
+    if not args:
+        # Show current setting
+        current = supabase.get_setting("queue_active_days", [1, 2, 3, 4, 5, 6])
+        days_str = ", ".join(day_names.get(d, str(d)) for d in sorted(current))
+        await update.message.reply_text(
+            f"📅 <b>Días activos de auto-cola:</b>\n{days_str}\n\n"
+            f"Para cambiar: <code>/dias_cola 1,2,3,4,5,6</code>\n"
+            f"(1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb, 7=Dom)",
+            parse_mode="HTML",
+            reply_markup=_admin_keyboard(),
+        )
+        return
+
+    # Parse day numbers
+    raw = " ".join(args).replace(" ", ",")
+    try:
+        days = [int(d.strip()) for d in raw.split(",") if d.strip()]
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Formato inválido. Usa números separados por comas.\n"
+            "Ejemplo: /dias_cola 1,2,3,4,5\n"
+            "(1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb, 7=Dom)",
+            reply_markup=_admin_keyboard(),
+        )
+        return
+
+    # Validate range
+    if not days or any(d < 1 or d > 7 for d in days):
+        await update.message.reply_text(
+            "❌ Los días deben ser números del 1 al 7.\n"
+            "(1=Lun, 2=Mar, 3=Mié, 4=Jue, 5=Vie, 6=Sáb, 7=Dom)",
+            reply_markup=_admin_keyboard(),
+        )
+        return
+
+    days = sorted(set(days))
+    supabase.set_setting("queue_active_days", days)
+    days_str = ", ".join(day_names.get(d, str(d)) for d in days)
+
+    await update.message.reply_text(
+        f"✅ Días activos actualizados:\n<b>{days_str}</b>\n\n"
+        f"Los próximos casos en cola se programarán solo en estos días.\n"
+        f"(Los que ya están en cola conservan su día original.)",
+        parse_mode="HTML",
         reply_markup=_admin_keyboard(),
     )
 
@@ -1540,6 +1724,54 @@ async def action_button_callback(update: Update, context: ContextTypes.DEFAULT_T
         await query.answer("⏳ Dime cuándo publicar...")
         return STATE_SCHEDULE_DATETIME
 
+    elif query.data == "action_autoqueue":
+        pending_case = context.user_data.get("pending_case")
+        if not pending_case:
+            await query.answer("❌ No hay caso pendiente", show_alert=True)
+            return STATE_WAITING_IMAGES
+
+        # Auto-save to DB if no preview_uuid exists
+        preview_uuid = context.user_data.get("preview_uuid")
+        if not preview_uuid:
+            try:
+                preview_uuid = supabase.save_case(pending_case)
+                context.user_data["preview_uuid"] = preview_uuid
+            except Exception as e:
+                logger.error(f"Error auto-saving case for queue: {e}")
+                await query.answer("❌ Error al guardar el caso", show_alert=True)
+                return STATE_WAITING_IMAGES
+        else:
+            # Update existing preview with latest data
+            supabase.update_case(preview_uuid, pending_case)
+
+        # Calculate next available slot
+        next_slot = calculate_next_queue_slot()
+
+        # Schedule it as queue entry
+        user_id = update.effective_user.id
+        entry_id = supabase.schedule_case_queue(preview_uuid, next_slot, user_id)
+
+        if entry_id:
+            formatted = format_scheduled_datetime(next_slot)
+            tz = pytz.timezone(Config.TZ)
+            day_names = {1: "Lun", 2: "Mar", 3: "Mié", 4: "Jue", 5: "Vie", 6: "Sáb", 7: "Dom"}
+            day_name = day_names.get(next_slot.astimezone(tz).isoweekday(), "")
+            try:
+                await query.edit_message_text(
+                    f"📥 Caso agregado a la cola\n\n"
+                    f"📅 {day_name} {formatted}\n"
+                    f"Se publicará automáticamente.\n\n"
+                    f"Usa /cola para ver la cola completa.",
+                )
+            except Exception:
+                pass
+            await query.answer(f"📥 En cola: {day_name} {formatted}", show_alert=True)
+            context.user_data.clear()
+            return ConversationHandler.END
+        else:
+            await query.answer("❌ Error al agregar a la cola", show_alert=True)
+            return STATE_WAITING_IMAGES
+
     await query.answer()
     return STATE_WAITING_IMAGES
 
@@ -1575,6 +1807,10 @@ async def _do_preview(query, context: ContextTypes.DEFAULT_TYPE) -> int:
                 [
                     InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
                     InlineKeyboardButton("🔄 Actualizar", callback_data="action_preview"),
+                ],
+                [
+                    InlineKeyboardButton("🕐 Programar", callback_data="action_programar"),
+                    InlineKeyboardButton("📥 Cola", callback_data="action_autoqueue"),
                 ],
             ]
         )
@@ -1719,11 +1955,29 @@ async def preview_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             ]
         )
 
+        # Add action buttons below the preview link
+        action_buttons = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        text="👁️ VER PREVIEW",
+                        url=f"https://t.me/{context.bot.username}/{miniapp_short_name}?startapp={preview_uuid}",
+                    )
+                ],
+                [
+                    InlineKeyboardButton("📢 Publicar", callback_data="action_publicar"),
+                    InlineKeyboardButton("🔄 Actualizar", callback_data="action_preview"),
+                ],
+                [
+                    InlineKeyboardButton("🕐 Programar", callback_data="action_programar"),
+                    InlineKeyboardButton("📥 Cola", callback_data="action_autoqueue"),
+                ],
+            ]
+        )
+
         await update.message.reply_text(
-            "👁️ Preview guardado. Abre la Mini App para ver cómo queda:\n\n"
-            "Cuando estés listo: /publicar\n"
-            "Para editar: /editar",
-            reply_markup=keyboard,
+            "👁️ Preview guardado.\n📸 Puedes seguir enviando fotos.",
+            reply_markup=action_buttons,
         )
         return STATE_WAITING_IMAGES
 
@@ -1892,16 +2146,18 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "/publicar - Publicar en el canal\n"
         "/editar - Editar secciones del caso\n"
         "/editar_caso - Editar caso ya publicado\n"
-        "/programar - Programar publicación\n"
+        "/programar - Programar publicación manual\n"
         "/cola - Ver cola de programados\n"
         "/desprogramar - Desprogramar caso\n"
+        "/hora_cola - Ver/cambiar hora de auto-cola\n"
+        "/dias_cola - Ver/cambiar días activos\n"
         "/cancelar - Cancelar\n"
         "/admin - Ver este menú\n\n"
         "<b>Flujo:</b>\n"
         "1. /caso → Pega el caso completo\n"
         "2. (Opcional) Envía fotos\n"
         "3. /preview → Revisa en la Mini App\n"
-        "4. /publicar → Se envía al canal o /programar → Programa para después\n"
+        "4. /publicar → Canal | /programar → Fecha exacta | 📥 Cola → Auto-cola\n"
     )
     await update.message.reply_text(
         admin_text,
@@ -1992,6 +2248,8 @@ async def post_init(application) -> None:
         BotCommand("programar", "🕐 Programar publicación"),
         BotCommand("cola", "📋 Ver cola de programados"),
         BotCommand("desprogramar", "🗑️ Desprogramar caso"),
+        BotCommand("hora_cola", "⏰ Hora de auto-cola"),
+        BotCommand("dias_cola", "📅 Días activos de cola"),
         BotCommand("cancelar", "🗑️ Cancelar caso pendiente"),
         BotCommand("admin", "🔧 Panel de administrador"),
         BotCommand("help", "ℹ️ Ayuda"),
@@ -2115,8 +2373,9 @@ def main() -> None:
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, edit_bib_handler),
                 ],
                 STATE_SCHEDULE_DATETIME: [
-                    CommandHandler("cancelar", cancelar_command),
-                    MessageHandler(_BTN_CANCELAR, cancelar_command),
+                    CommandHandler("cancelar", schedule_cancel_back),
+                    MessageHandler(_BTN_CANCELAR, schedule_cancel_back),
+                    MessageHandler(filters.PHOTO & ~filters.UpdateType.EDITED_MESSAGE, schedule_photo_warning),
                     MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.UpdateType.EDITED_MESSAGE, schedule_datetime_handler),
                 ],
             },
@@ -2177,6 +2436,8 @@ def main() -> None:
         app.add_handler(CommandHandler("publicar", fallback_publicar))
         app.add_handler(CommandHandler("cola", cola_command))
         app.add_handler(CommandHandler("desprogramar", desprogramar_command))
+        app.add_handler(CommandHandler("hora_cola", hora_cola_command))
+        app.add_handler(CommandHandler("dias_cola", dias_cola_command))
 
         # Keyboard button text fallbacks (without slash)
         app.add_handler(MessageHandler(_BTN_CANCELAR, fallback_cancelar))
@@ -2281,6 +2542,7 @@ def main() -> None:
                     ],
                     [
                         InlineKeyboardButton("🕐 Programar", callback_data="action_programar"),
+                        InlineKeyboardButton("📥 Cola", callback_data="action_autoqueue"),
                     ]
                 ]
 
