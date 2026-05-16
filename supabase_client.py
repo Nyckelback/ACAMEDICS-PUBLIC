@@ -138,6 +138,7 @@ class SupabaseClient:
                 "scheduled_at": scheduled_at.isoformat(),
                 "status": "pending",
                 "admin_user_id": admin_user_id,
+                "source": "manual",
             }
             self.service_client.table("scheduled_posts").insert(data).execute()
             logger.info(f"Case {case_id} scheduled for {scheduled_at} (entry {entry_id})")
@@ -290,6 +291,77 @@ class SupabaseClient:
         except Exception as e:
             logger.error(f"Error marking overdue posts: {e}")
             return []
+
+    # ═══════════════════════════════════════════
+    # BOT SETTINGS TABLE
+    # ═══════════════════════════════════════════
+
+    def get_setting(self, key: str, default=None):
+        """Get a bot setting by key. Returns parsed JSON value."""
+        try:
+            response = self.service_client.table("bot_settings").select("value").eq("key", key).execute()
+            if response.data:
+                return response.data[0]["value"]
+            return default
+        except Exception as e:
+            logger.error(f"Error getting setting {key}: {e}")
+            return default
+
+    def set_setting(self, key: str, value) -> bool:
+        """Upsert a bot setting."""
+        try:
+            self.service_client.table("bot_settings").upsert({
+                "key": key,
+                "value": value,
+                "updated_at": datetime.now().isoformat(),
+            }).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Error setting {key}: {e}")
+            return False
+
+    # ═══════════════════════════════════════════
+    # AUTO-QUEUE LOGIC
+    # ═══════════════════════════════════════════
+
+    def get_last_queued_date(self) -> Optional[datetime]:
+        """Get the scheduled_at of the latest pending queue entry."""
+        try:
+            response = (
+                self.service_client.table("scheduled_posts")
+                .select("scheduled_at")
+                .eq("status", "pending")
+                .eq("source", "queue")
+                .order("scheduled_at", desc=True)
+                .limit(1)
+                .execute()
+            )
+            if response.data:
+                raw = response.data[0]["scheduled_at"]
+                return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            return None
+        except Exception as e:
+            logger.error(f"Error getting last queued date: {e}")
+            return None
+
+    def schedule_case_queue(self, case_id: str, scheduled_at: datetime, admin_user_id: int) -> Optional[str]:
+        """Schedule a case via auto-queue (sets source='queue')."""
+        try:
+            entry_id = str(uuid.uuid4())
+            data = {
+                "id": entry_id,
+                "case_id": case_id,
+                "scheduled_at": scheduled_at.isoformat(),
+                "status": "pending",
+                "admin_user_id": admin_user_id,
+                "source": "queue",
+            }
+            self.service_client.table("scheduled_posts").insert(data).execute()
+            logger.info(f"Case {case_id} auto-queued for {scheduled_at} (entry {entry_id})")
+            return entry_id
+        except Exception as e:
+            logger.error(f"Error auto-queuing case: {e}")
+            return None
 
 
 def init_supabase(url: str, key: str, service_key: str) -> SupabaseClient:
