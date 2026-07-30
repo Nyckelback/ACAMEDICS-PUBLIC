@@ -68,9 +68,11 @@
             letter-spacing: -0.3px;
             margin-top: 2px;
         }
-        [data-theme="dark"] .header-birrete svg rect { fill: #20A4B0; }
-        [data-theme="dark"] .header-birrete svg circle,
-        [data-theme="dark"] .header-birrete svg rect:not(:first-child) { fill: #FFFFFF; }
+        /* Logo ACAMEDICS: se aclaran los tonos en modo noche para que no se pierda */
+        [data-theme="dark"] .header-birrete .brr-1 { fill: #3FD3DB; }
+        [data-theme="dark"] .header-birrete .brr-4 { fill: #2AA3AC; }
+        [data-theme="dark"] .header-birrete .brr-2 { fill: #1F7C85; }
+        [data-theme="dark"] .header-birrete .brr-3 { fill: #1A6B72; }
         [data-theme="dark"] .scroll-top { box-shadow: 0 2px 14px rgba(0,0,0,0.5); }
         [data-theme="dark"] .img-toggle-count { background: var(--border); color: var(--slate); }
         [data-theme="dark"] .motivation-text { color: #BDBDBD; }
@@ -90,7 +92,7 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        .app { max-width: 640px; margin: 0 auto; padding: 0 20px 12px; }
+        .app { max-width: 640px; margin: 0 auto; padding: 0 12px 12px; }
 
         /* ═══════════════════════════════════════════
            LOADING & ERROR
@@ -180,7 +182,7 @@
         .answer-section {
             background: var(--primary-subtle);
             padding: 16px 20px;
-            margin: 0 -20px;
+            margin: 0 -12px;
             display: flex; align-items: center; gap: 14px;
         }
         .answer-letter {
@@ -210,12 +212,29 @@
             font-family: var(--font-body);
             font-size: var(--font-size-base);
             color: var(--text-body);
-            line-height: 1.32;
+            line-height: 1.55;
             text-align: left;
             transition: font-size 0.2s ease;
         }
         .justification p { margin-bottom: 14px; }
         .justification p:last-child { margin-bottom: 0; }
+        /* El cuerpo va en 300 (light); las negritas se fijan para que no se pierdan */
+        .justification b { font-weight: 700; }
+
+        /* Del 2.º párrafo en adelante (los descartes): viñeta teal */
+        .justification p:not(:first-child) {
+            position: relative;
+            padding-left: 18px;
+        }
+        .justification p:not(:first-child)::before {
+            content: "";
+            position: absolute;
+            left: 2px;
+            top: 0.62em;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: var(--primary);
+        }
 
         /* Drop cap */
         .justification p:first-child::first-letter {
@@ -235,7 +254,7 @@
         .tip-section {
             padding: 0;
             background: var(--primary-subtle);
-            margin: 0 -20px;
+            margin: 0 -12px;
         }
         .tip-accent-bar {
             height: 3px;
@@ -665,7 +684,7 @@
             // ── HEADER ──
             html += '<div class="header">';
             html += '<div class="header-left">';
-            html += '<div class="header-birrete"><svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><rect width="40" height="40" rx="10" fill="#18828C"/><g transform="translate(4,7) scale(0.5)"><polygon points="32,6 4,22 32,38 60,22" fill="white"/><path d="M16 24v10c0 5.5 7.2 10 16 10s16-4.5 16-10V24" fill="rgba(255,255,255,0.9)"/><rect x="54" y="22" width="3" height="20" rx="1.5" fill="white"/><circle cx="55.5" cy="44" r="3" fill="white"/></g></svg></div>';
+            html += '<div class="header-birrete"><svg viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg"><path class="brr-3" fill="#0e4247" d="m145.66,87.07h0s0-3.1,0-3.1l-49.57,22.81c-3.85,1.78-8.31,1.76-12.16-.01l-49.57-22.89v3.2h0s0,0,0,0v37.58c.5-.03,1-.03,1.51-.03,7.65,0,15.02,1.18,21.96,3.37.05.01.1.03.15.04,10.18,2.88,21.86,8.56,31.13,19.7.04.03.91,1.11.91,1.11,0,0,.87-1.09.91-1.11,9.36-11.24,21.16-16.94,31.4-19.79.05-.01.11-.03.18-.05,6.84-2.12,14.13-3.27,21.67-3.27.5,0,.99,0,1.49.03v-29.77h0v-7.81Z"/><path class="brr-4" fill="#18757e" d="m139.52,117.84s-34.94,3.42-49.52,31.01c0,0-12.19-28.82-55.65-29.38v-32.39l40.97,26.28c7.73,4.96,17.45,5.83,25.86,2.12.15-.07,38.33-17.75,38.33-17.75v20.12Z"/><path class="brr-1" fill="#1ba8af" d="m85.97,31.98L1,66.09l83.37,38.36c3.57,1.64,7.68,1.64,11.25,0l83.37-38.36L94.03,31.98c-2.57-1.11-5.48-1.11-8.05,0Z"/><path class="brr-4" fill="#18757e" d="m95.63,104.45c-6.05,2.78-11.25,0-11.25,0L1,66.09v4.75s0,.13.01.19c.07.58.43,1.09.97,1.34l80.81,37.56c4.57,2.13,9.85,2.13,14.43,0l80.81-37.56c.54-.25.9-.76.97-1.34h0c0-.13.01-.26.01-.39v-4.56l-83.37,38.36Z"/><path class="brr-2" fill="#12585f" d="m163.85,122.56l3.45,20.74h-12.2l3.77-20.59c-2.21-.92-3.77-3.1-3.77-5.64s1.56-4.71,3.77-5.65l.04-36.1-61.56-6.93c-1.44,1.36-4.3,2.21-7.55,2.06-4.6-.21-8.23-2.34-8.12-4.75,0-.14.03-.28.06-.42.08-.36.25-.7.49-1.02,0,0,0,0,0,0,1.23-1.64,4.36-2.7,7.98-2.54,3.92.18,7.14,1.76,7.93,3.71l65.64,7.65-.03,38.46c2.09.97,3.54,3.06,3.54,5.53s-1.4,4.51-3.45,5.48Z"/></svg></div>';
             html += '<span class="header-logo-text">ACAMEDICS</span>';
             html += '<div class="header-divider"></div>';
             html += '<span class="header-case">Caso #'+esc(String(caseNum))+'</span>';
@@ -716,7 +735,15 @@
                 }
                 paras.forEach(p => {
                     const merged = p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
-                    html += '<p>'+mdBold(esc(merged))+'</p>';
+                    let parHtml = mdBold(esc(merged));
+                    // Deja en negrita SOLO la primera de cada párrafo (lo realmente relevante);
+                    // las demás se muestran en texto normal. Para desactivar: borrar este bloque.
+                    let primera = true;
+                    parHtml = parHtml.replace(/<b>([\s\S]*?)<\/b>/g, (m, dentro) => {
+                        if (primera) { primera = false; return m; }
+                        return dentro;
+                    });
+                    html += '<p>'+parHtml+'</p>';
                 });
                 html += '</div></div>';
             }
