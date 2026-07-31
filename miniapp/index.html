@@ -7,7 +7,7 @@
     <title>ACAMEDICS — Justificación</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600;700&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600;700&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Nunito+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         @font-face { font-family: 'Neue Kabel'; src: local('Neue Kabel'), local('ITC Kabel'); }
@@ -32,7 +32,9 @@
             --bg: #FFFFFF;
 
             --font-title: 'Neue Kabel', 'Josefin Sans', 'Helvetica Neue', sans-serif;
-            --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
+            /* Avenir Next es la de Human Dx: viene en iPhone/Mac pero no es libre
+               para web, asi que en Android cae a Nunito Sans (geometrica parecida). */
+            --font-body: 'Avenir Next', 'Avenir', 'Nunito Sans', 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-size-base: 16px;
         }
 
@@ -210,7 +212,7 @@
 
         .justification {
             font-family: var(--font-body);
-            font-size: calc(var(--font-size-base) - 1px);
+            font-size: calc(var(--font-size-base) - 3px);
             color: var(--text-body);
             line-height: 1.55;
             text-align: left;
@@ -219,18 +221,36 @@
         /* Todos los parrafos comparten la misma sangria para que el texto quede
            alineado: el primero (con drop cap) y los de vineta empiezan igual. */
         .justification p {
-            /* El espacio entre parrafos debe superar la altura de linea (23px),
+            /* El espacio entre parrafos debe superar la altura de linea,
                si no, los parrafos se funden y el bloque se ve apretado. */
             margin-bottom: 26px;
-            padding-left: 18px;
             position: relative;
         }
         .justification p:last-child { margin-bottom: 0; }
         .justification b { font-weight: 700; }
-        /* NOTA: aqui hubo una vineta en cada parrafo salvo el primero, asumiendo
-           "1.er parrafo = correcta, el resto = descartes". Es FALSO: la correcta
-           puede ocupar 2 o 3 parrafos, y esos quedaban marcados como descartes.
-           No hay forma fiable de distinguirlos desde el texto, asi que se quito. */
+
+        /* La vineta marca UNICAMENTE los descartes (una opcion incorrecta cada uno).
+           Los parrafos de la correcta van sin vineta, sean 1, 2 o 3. */
+        .justification p.descarte { padding-left: 18px; }
+        .justification p.descarte::before {
+            content: "";
+            position: absolute;
+            left: 2px;
+            top: 0.66em;
+            width: 5px; height: 5px;
+            border-radius: 1px;
+            background: var(--primary);
+        }
+
+        /* Separador entre la explicacion de la correcta y los descartes:
+           una linea corta y centrada, sin texto. */
+        .just-sep {
+            margin: 28px auto 24px;
+            width: 44%;
+            height: 1px;
+            background: var(--border);
+        }
+        .just-sep span { display: none; }
 
         /* Drop cap */
         .justification p:first-child::first-letter {
@@ -786,8 +806,31 @@
                 } else {
                     paras = justText.split(/\n/).filter(p=>p.trim());
                 }
+                // ── Donde termina la CORRECTA y empiezan los descartes ──────────
+                // Tres senales, de mas fiable a menos. La correcta puede ocupar varios
+                // parrafos, asi que nunca se asume "el primero y ya".
+                //   1. El titulo "¿Por que no las otras?" (lo genera publish.py)
+                //   2. Un parrafo que arranca con "**B. Texto de la opcion**"
+                //   3. Una linea ---  (escape manual para casos escritos a mano)
+                // Si no aparece ninguna, no se marca nada: mejor callar que inventar
+                // una estructura que no se conoce.
+                const esTituloOtras = t => /^\**\s*¿?\s*por\s+qu[ée]\s+no\s+(las\s+)?(otras|dem[áa]s)/i.test(t);
+                const esRaya        = t => /^\s*([-*_])\1{2,}\s*$/.test(t);
+                const abreDescarte  = t => /^\*\*\s*[A-F][.)]\s/.test(t);
+                let enDescartes = false;
+
                 paras.forEach(p => {
                     const merged = p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
+                    if (esTituloOtras(merged) || esRaya(merged)) {
+                        enDescartes = true;
+                        html += '<div class="just-sep"><span>¿Por qué no las <i>otras</i>?</span></div>';
+                        return;
+                    }
+                    if (abreDescarte(merged) && !enDescartes) {
+                        // primer descarte sin titulo previo: se abre la seccion igual
+                        enDescartes = true;
+                        html += '<div class="just-sep"><span>¿Por qué no las <i>otras</i>?</span></div>';
+                    }
                     let parHtml = mdBold(esc(merged));
                     // Deja en negrita SOLO la primera de cada párrafo (lo realmente relevante);
                     // las demás se muestran en texto normal. Para desactivar: borrar este bloque.
@@ -796,7 +839,7 @@
                         if (primera) { primera = false; return m; }
                         return dentro;
                     });
-                    html += '<p>'+parHtml+'</p>';
+                    html += '<p'+(enDescartes ? ' class="descarte"' : '')+'>'+parHtml+'</p>';
                 });
                 html += '</div></div>';
             }
