@@ -219,23 +219,18 @@
         /* Todos los parrafos comparten la misma sangria para que el texto quede
            alineado: el primero (con drop cap) y los de vineta empiezan igual. */
         .justification p {
-            margin-bottom: 14px;
+            /* El espacio entre parrafos debe superar la altura de linea (23px),
+               si no, los parrafos se funden y el bloque se ve apretado. */
+            margin-bottom: 26px;
             padding-left: 18px;
             position: relative;
         }
-        /* El primero (con drop cap) va un poco mas hacia el borde que los de vineta */
-        .justification p:first-child { padding-left: 9px; }
         .justification p:last-child { margin-bottom: 0; }
         .justification b { font-weight: 700; }
-        .justification p:not(:first-child)::before {
-            content: "";
-            position: absolute;
-            left: 2px;
-            top: 0.62em;
-            width: 6px; height: 6px;
-            border-radius: 50%;
-            background: var(--primary);
-        }
+        /* NOTA: aqui hubo una vineta en cada parrafo salvo el primero, asumiendo
+           "1.er parrafo = correcta, el resto = descartes". Es FALSO: la correcta
+           puede ocupar 2 o 3 parrafos, y esos quedaban marcados como descartes.
+           No hay forma fiable de distinguirlos desde el texto, asi que se quito. */
 
         /* Drop cap */
         .justification p:first-child::first-letter {
@@ -342,19 +337,47 @@
         .lightbox {
             display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(0,0,0,0.92); z-index: 1000;
-            align-items: center; justify-content: center; flex-direction: column; padding: 20px;
+            align-items: center; justify-content: center; flex-direction: column;
+            overflow: hidden; touch-action: none;
         }
         .lightbox.active { display: flex; }
-        .lightbox img { max-width: 100%; max-height: 85vh; border-radius: 8px; object-fit: contain; }
-        .lightbox-close {
-            position: absolute; top: 16px; right: 16px;
-            width: 36px; height: 36px; border-radius: 50%;
-            background: rgba(255,255,255,0.15); border: none;
-            color: #fff; font-size: 20px; cursor: pointer;
-            display: flex; align-items: center; justify-content: center;
-            backdrop-filter: blur(4px);
+        .lightbox img {
+            max-width: 100%; max-height: 100%;
+            object-fit: contain;
+            transform-origin: center center;
+            will-change: transform;
+            -webkit-user-drag: none;
+            transition: transform 0.18s ease-out;
         }
-        .lightbox-hint { color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 12px; }
+        .lightbox.dragging img { transition: none; }
+        /* Botonera superior del visor */
+        .lb-bar {
+            position: absolute; top: 0; left: 0; right: 0;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 16px; gap: 10px; z-index: 2;
+            background: linear-gradient(180deg, rgba(0,0,0,0.55), transparent);
+        }
+        .lb-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: rgba(255,255,255,0.16); border: none;
+            color: #fff; cursor: pointer; flex-shrink: 0;
+            display: flex; align-items: center; justify-content: center;
+            -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+        }
+        .lb-btn:active { background: rgba(255,255,255,0.3); }
+        .lb-btn svg { width: 20px; height: 20px; }
+        .lb-right { display: flex; gap: 10px; }
+        .lb-zoom {
+            font-family: var(--font-body); font-size: 12px; font-weight: 600;
+            color: rgba(255,255,255,0.85); min-width: 46px; text-align: center;
+        }
+        .lightbox-hint {
+            position: absolute; bottom: 22px; left: 0; right: 0; text-align: center;
+            color: rgba(255,255,255,0.55); font-size: 12px; z-index: 2;
+            font-family: var(--font-body); pointer-events: none;
+            transition: opacity 0.25s;
+        }
+        .lightbox.zoomed .lightbox-hint { opacity: 0; }
 
         /* ═══════════════════════════════════════════
            BIBLIOGRAPHY
@@ -617,18 +640,42 @@
         // ─── Utility functions ───
         function stripBibPrefix(t) { return t.replace(/^\s*(\d+[\.\)\-\]]\s*|\[\d+\]\s*|-\s*|•\s*|–\s*|►\s*|>\s*)/,'').trim(); }
 
+        // ── Filtros de bibliografia ──────────────────────────────────────
+        // Descartan lo que NO es una referencia real. Actuan al mostrar, asi que
+        // tambien corrigen casos ya publicados sin tener que volver a subirlos.
+
+        // 1) Encabezados de seccion que se cuelan como si fueran una referencia
+        const BIB_ENCABEZADOS = /^(bibliograf[ií]a|referencias?(\s+bibliogr[aá]ficas?)?|fuentes?|citas?(\s+bibliogr[aá]ficas?)?|lecturas?\s+recomendadas?|material\s+de\s+consulta|bibliography|references?|sources?|refs?)\s*:?\s*$/i;
+
+        // 2) Bancos de preguntas que NO deben aparecer citados (regla ACAMEDICS)
+        const BIB_PROHIBIDAS = /\b(amboss|uworld|nbme|usmle[\s-]*rx|usmle|quesmed|kaplan|osmosis|lecturio|truelearn|archer\s+review|mir\b|enarm)\b/i;
+
+        function esReferenciaValida(s) {
+            const t = (s || '').trim();
+            if (t.length < 12) return false;
+            if (BIB_ENCABEZADOS.test(t)) return false;          // "BIBLIOGRAFÍA" sola
+            if (BIB_PROHIBIDAS.test(t)) return false;           // AMBOSS, UWorld, etc.
+            if (/^tip\s+acam[eé]dico/i.test(t)) return false;   // el TIP mal ubicado
+            if (t.includes('**')) return false;                 // prosa con negritas: es justificacion, no referencia
+            return true;
+        }
+
         function parseBibliography(bib) {
+            let bruto = [];
             if (Array.isArray(bib) && bib.length > 0) {
-                if (bib.length === 1 && bib[0].includes('\n')) return bib[0].split('\n').map(s=>s.trim()).filter(s=>s.length>10);
-                const expanded = [];
-                bib.forEach(item => {
-                    if (item.includes('\n')) item.split('\n').map(s=>s.trim()).filter(s=>s.length>10).forEach(s=>expanded.push(s));
-                    else if (item.trim().length>0) expanded.push(item.trim());
-                });
-                return expanded;
+                if (bib.length === 1 && bib[0].includes('\n')) {
+                    bruto = bib[0].split('\n');
+                } else {
+                    bib.forEach(item => {
+                        if (typeof item !== 'string') return;
+                        if (item.includes('\n')) item.split('\n').forEach(s => bruto.push(s));
+                        else bruto.push(item);
+                    });
+                }
+            } else if (typeof bib === 'string') {
+                bruto = bib.split('\n');
             }
-            if (typeof bib === 'string') return bib.split('\n').map(s=>s.trim()).filter(s=>s.length>10);
-            return [];
+            return bruto.map(s => (s || '').trim()).filter(esReferenciaValida);
         }
 
         function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -656,7 +703,7 @@
                 // Solo en pruebas locales: si no hay ?case=, carga un caso de ejemplo
                 // para poder ver el diseño al instante. En Telegram/produccion NUNCA entra aqui.
                 if (!caseId && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
-                    caseId = 'c05fbd5e-4b8e-4d1b-b0af-997dd8210497';
+                    caseId = 'fea66128-a654-4a84-bf9e-4c83f9ca117c';
                 }
                 if (!caseId) { showError('No se especificó caso clínico'); return; }
                 const ak = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1eGV3enplcWdsdWltZm1pZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NjYwMjcsImV4cCI6MjA4ODI0MjAyN30.fDyK2PwJCpCOi8axSNw_hmFRe5tSxyptoErWIpS2JLQ';
@@ -833,7 +880,18 @@
             html += '</div>';
 
             // ── LIGHTBOX ──
-            html += '<div class="lightbox" id="lightbox"><button class="lightbox-close" id="lightboxClose">&times;</button><img id="lightboxImg" src="" alt=""><div class="lightbox-hint">Toca para cerrar</div></div>';
+            html += '<div class="lightbox" id="lightbox">'
+                 +    '<div class="lb-bar">'
+                 +      '<button class="lb-btn" id="lightboxClose" title="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>'
+                 +      '<span class="lb-zoom" id="lbZoom">100%</span>'
+                 +      '<div class="lb-right">'
+                 +        '<button class="lb-btn" id="lbReset" title="Restablecer zoom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>'
+                 +        '<button class="lb-btn" id="lbDownload" title="Descargar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></button>'
+                 +      '</div>'
+                 +    '</div>'
+                 +    '<img id="lightboxImg" src="" alt="">'
+                 +    '<div class="lightbox-hint">Pellizca para acercar · doble toque · arrastra para mover</div>'
+                 +  '</div>';
 
             contentDiv.innerHTML = html;
 
@@ -846,19 +904,142 @@
             const it = document.getElementById('imgToggle');
             if (it) it.addEventListener('click', () => { haptic('light'); document.getElementById('imgAccordion').classList.toggle('open'); });
 
-            // Lightbox
+            // ── Lightbox con zoom, arrastre y descarga ──
             const lb = document.getElementById('lightbox');
             const lbImg = document.getElementById('lightboxImg');
+            const lbZoomLabel = document.getElementById('lbZoom');
+            const MIN_Z = 1, MAX_Z = 6;
+            let z = 1, tx = 0, ty = 0;              // escala y desplazamiento
+            let srcUrl = '';
+
+            function aplicar() {
+                lbImg.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + z + ')';
+                lbZoomLabel.textContent = Math.round(z * 100) + '%';
+                lb.classList.toggle('zoomed', z > 1.02);
+            }
+            function limitar() {
+                // no dejar que la imagen se salga por completo de la pantalla
+                const r = lbImg.getBoundingClientRect();
+                const w = lbImg.offsetWidth * z, h = lbImg.offsetHeight * z;
+                const maxX = Math.max(0, (w - window.innerWidth) / 2);
+                const maxY = Math.max(0, (h - window.innerHeight) / 2);
+                tx = Math.min(maxX, Math.max(-maxX, tx));
+                ty = Math.min(maxY, Math.max(-maxY, ty));
+            }
+            function reset() { z = 1; tx = 0; ty = 0; aplicar(); }
+
             document.querySelectorAll('.img-content img').forEach(img => {
                 img.addEventListener('click', () => {
                     haptic('light');
-                    lbImg.src = img.getAttribute('data-full') || img.src;
+                    srcUrl = img.getAttribute('data-full') || img.src;
+                    lbImg.src = srcUrl;
+                    reset();
                     lb.classList.add('active');
                 });
             });
-            const closeLb = () => { haptic('light'); lb.classList.remove('active'); };
+
+            const closeLb = () => { haptic('light'); lb.classList.remove('active'); reset(); };
             document.getElementById('lightboxClose').addEventListener('click', closeLb);
-            lb.addEventListener('click', e => { if (e.target === lb || e.target.classList.contains('lightbox-hint')) closeLb(); });
+            document.getElementById('lbReset').addEventListener('click', () => { haptic('light'); reset(); });
+
+            // Descargar en calidad original
+            document.getElementById('lbDownload').addEventListener('click', async () => {
+                haptic('medium');
+                let nombre = (srcUrl.split('/').pop() || 'acamedics.jpg').split('?')[0];
+                // El bot sube sin content-type, asi que Supabase las marca text/plain:
+                // se corrige el tipo aqui segun la extension para que el archivo baje bien.
+                const ext = (nombre.split('.').pop() || 'jpg').toLowerCase();
+                const tipos = { jpg:'image/jpeg', jpeg:'image/jpeg', png:'image/png',
+                                webp:'image/webp', heic:'image/heic', gif:'image/gif' };
+                try {
+                    const resp = await fetch(srcUrl);
+                    const crudo = await resp.blob();
+                    const blob = new Blob([crudo], { type: tipos[ext] || 'image/jpeg' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = nombre;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 4000);
+                } catch (e) {
+                    window.open(srcUrl, '_blank');   // respaldo: abrir en pestaña nueva
+                }
+            });
+
+            // --- gestos tactiles: pellizco, arrastre, doble toque ---
+            let punteros = new Map(), distIni = 0, zIni = 1, arrastrando = false, ultX = 0, ultY = 0;
+            let ultimoToque = 0;
+
+            lbImg.addEventListener('pointerdown', e => {
+                punteros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                lbImg.setPointerCapture(e.pointerId);
+                if (punteros.size === 1) {
+                    arrastrando = true; ultX = e.clientX; ultY = e.clientY;
+                    lb.classList.add('dragging');
+                } else if (punteros.size === 2) {
+                    const p = [...punteros.values()];
+                    distIni = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+                    zIni = z; arrastrando = false;
+                }
+            });
+            lbImg.addEventListener('pointermove', e => {
+                if (!punteros.has(e.pointerId)) return;
+                punteros.set(e.pointerId, { x: e.clientX, y: e.clientY });
+                if (punteros.size === 2) {
+                    const p = [...punteros.values()];
+                    const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+                    if (distIni > 0) {
+                        z = Math.min(MAX_Z, Math.max(MIN_Z, zIni * (d / distIni)));
+                        limitar(); aplicar();
+                    }
+                } else if (arrastrando && z > 1.02) {
+                    tx += e.clientX - ultX; ty += e.clientY - ultY;
+                    ultX = e.clientX; ultY = e.clientY;
+                    limitar(); aplicar();
+                }
+            });
+            function soltar(e) {
+                punteros.delete(e.pointerId);
+                if (punteros.size === 0) {
+                    arrastrando = false;
+                    lb.classList.remove('dragging');
+                    if (z <= 1.02) reset();       // vuelve a encuadrar
+                }
+                if (punteros.size < 2) distIni = 0;
+            }
+            lbImg.addEventListener('pointerup', soltar);
+            lbImg.addEventListener('pointercancel', soltar);
+
+            // doble toque / doble clic: acercar o restablecer
+            lbImg.addEventListener('click', e => {
+                const ahora = Date.now();
+                if (ahora - ultimoToque < 300) {
+                    haptic('light');
+                    if (z > 1.02) { reset(); }
+                    else {
+                        z = 2.5;
+                        const r = lbImg.getBoundingClientRect();
+                        tx = (r.left + r.width / 2 - e.clientX) * (z - 1);
+                        ty = (r.top + r.height / 2 - e.clientY) * (z - 1);
+                        limitar(); aplicar();
+                    }
+                    ultimoToque = 0;
+                } else {
+                    ultimoToque = ahora;
+                }
+            });
+
+            // rueda del mouse (escritorio)
+            lb.addEventListener('wheel', e => {
+                e.preventDefault();
+                z = Math.min(MAX_Z, Math.max(MIN_Z, z * (e.deltaY < 0 ? 1.12 : 0.89)));
+                if (z <= 1.02) { tx = 0; ty = 0; }
+                limitar(); aplicar();
+            }, { passive: false });
+
+            // tocar el fondo cierra, pero solo si no hay zoom (para no interrumpir el arrastre)
+            lb.addEventListener('click', e => {
+                if (e.target === lb && z <= 1.02) closeLb();
+            });
 
             // Telegram link: scroll to top
             const tgLink = document.getElementById('tgScrollTop');
