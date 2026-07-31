@@ -210,22 +210,23 @@
 
         .justification {
             font-family: var(--font-body);
-            font-size: var(--font-size-base);
+            font-size: calc(var(--font-size-base) - 1px);
             color: var(--text-body);
             line-height: 1.55;
             text-align: left;
             transition: font-size 0.2s ease;
         }
-        .justification p { margin-bottom: 14px; }
-        .justification p:last-child { margin-bottom: 0; }
-        /* El cuerpo va en 300 (light); las negritas se fijan para que no se pierdan */
-        .justification b { font-weight: 700; }
-
-        /* Del 2.º párrafo en adelante (los descartes): viñeta teal */
-        .justification p:not(:first-child) {
-            position: relative;
+        /* Todos los parrafos comparten la misma sangria para que el texto quede
+           alineado: el primero (con drop cap) y los de vineta empiezan igual. */
+        .justification p {
+            margin-bottom: 14px;
             padding-left: 18px;
+            position: relative;
         }
+        /* El primero (con drop cap) va un poco mas hacia el borde que los de vineta */
+        .justification p:first-child { padding-left: 9px; }
+        .justification p:last-child { margin-bottom: 0; }
+        .justification b { font-weight: 700; }
         .justification p:not(:first-child)::before {
             content: "";
             position: absolute;
@@ -651,6 +652,11 @@
                 }
                 if (!caseId && new URLSearchParams(window.location.hash.replace('#','?')).get('tgWebAppStartParam')) {
                     caseId = new URLSearchParams(window.location.hash.replace('#','?')).get('tgWebAppStartParam');
+                }
+                // Solo en pruebas locales: si no hay ?case=, carga un caso de ejemplo
+                // para poder ver el diseño al instante. En Telegram/produccion NUNCA entra aqui.
+                if (!caseId && /^(localhost|127\.0\.0\.1)$/i.test(location.hostname)) {
+                    caseId = 'c05fbd5e-4b8e-4d1b-b0af-997dd8210497';
                 }
                 if (!caseId) { showError('No se especificó caso clínico'); return; }
                 const ak = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1eGV3enplcWdsdWltZm1pZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NjYwMjcsImV4cCI6MjA4ODI0MjAyN30.fDyK2PwJCpCOi8axSNw_hmFRe5tSxyptoErWIpS2JLQ';
