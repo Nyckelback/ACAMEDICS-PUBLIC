@@ -32,9 +32,7 @@
             --bg: #FFFFFF;
 
             --font-title: 'Neue Kabel', 'Josefin Sans', 'Helvetica Neue', sans-serif;
-            /* Avenir Next es la de Human Dx: viene en iPhone/Mac pero no es libre
-               para web, asi que en Android cae a Nunito Sans (geometrica parecida). */
-            --font-body: 'Avenir Next', 'Avenir', 'Nunito Sans', 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
             --font-size-base: 16px;
         }
 
@@ -81,7 +79,7 @@
         [data-theme="dark"] .footer-logo-text { color: #BDBDBD; opacity: 0.6; }
         [data-theme="dark"] .footer-link { color: #BDBDBD; }
         [data-theme="dark"] .footer-copy { color: #BDBDBD; opacity: 0.5; }
-        [data-theme="dark"] .divider--primary { background: linear-gradient(90deg, var(--primary), var(--border) 70%, transparent); }
+        [data-theme="dark"] .divider--primary { background: var(--border); }
         [data-theme="dark"] .bottom-bar { background: linear-gradient(90deg, #333, var(--primary), var(--accent)); }
         [data-theme="dark"] .lightbox { background: rgba(0,0,0,0.96); }
 
@@ -132,9 +130,13 @@
            DIVIDER
         ═══════════════════════════════════════════ */
         .divider { height: 1px; background: var(--border); }
+        /* Cierre del header: una linea fina de borde a borde, como en cualquier
+           barra de app. Antes era un degradado teal que se desvanecia: llamaba la
+           atencion sin separar nada y se leia como adorno. */
         .divider--primary {
-            height: 2px;
-            background: linear-gradient(90deg, var(--primary), var(--border) 70%, transparent);
+            height: 1px;
+            margin: 0 -12px;
+            background: var(--border);
         }
 
         /* ═══════════════════════════════════════════
@@ -294,7 +296,7 @@
 
         .justification {
             font-family: var(--font-body);
-            font-size: calc(var(--font-size-base) - 1px);
+            font-size: calc(var(--font-size-base) - 2px);
             color: var(--text-body);
             line-height: 1.6;
             text-align: left;
