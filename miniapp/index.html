@@ -142,9 +142,10 @@
         ═══════════════════════════════════════════ */
         .hero { padding: 24px 0 28px; }
 
+        /* la etiqueta va pegada a lo que etiqueta, no flotando lejos */
         .eyebrow-row {
             display: flex; align-items: center; justify-content: space-between;
-            gap: 12px; margin-bottom: 24px;
+            gap: 12px; margin-bottom: 12px;
         }
         .eyebrow-row .hero-title { margin-bottom: 0; }
 
@@ -170,40 +171,121 @@
         [data-theme="dark"] .theme-btn .icon-moon { display: none; }
         [data-theme="dark"] .theme-btn .icon-sun { display: block; }
 
+        /* Etiqueta de seccion, con el mismo estilo que "RESPUESTA CORRECTA":
+           antes era un titulo de 20px que competia con el diagnostico. */
         .hero-title {
             font-family: var(--font-title);
-            font-size: 20px; font-weight: 300;
-            color: var(--navy-soft);
-            line-height: 1.35;
-            letter-spacing: 0.3px;
-            margin-bottom: 18px;
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            line-height: 1.4;
+            letter-spacing: 1.2px;
+            margin-bottom: 0;
             text-transform: uppercase;
         }
+        .hero-title br { display: none; }
 
         /* Answer callout */
+        /* Chips de especialidad / sistema, al estilo de las apps de casos clinicos */
+        .chips {
+            display: flex; flex-wrap: wrap; gap: 7px;
+            padding: 16px 0 0;
+        }
+        .chip {
+            font-family: var(--font-title);
+            font-size: 10px; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.9px;
+            padding: 5px 11px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            white-space: nowrap;
+        }
+        .chip:first-child { color: var(--primary); border-color: var(--primary); }
+
+        /* ── Bloque de revision: solo aparece si published=false ──
+           Es andamiaje de trabajo, no parte del diseno publicado: por eso va
+           en un tono distinto y con su etiqueta, para no confundirlo con el caso. */
+        .revision {
+            margin: 18px -12px 0;
+            padding: 16px 20px 18px;
+            background: rgba(127,127,127,0.07);
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+        .revision-tag {
+            font-family: var(--font-title);
+            font-size: 10px; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 1.2px;
+            margin-bottom: 12px;
+        }
+        .revision-vineta {
+            font-family: var(--font-body);
+            font-size: calc(var(--font-size-base) - 2px);
+            color: var(--text-body);
+            line-height: 1.55;
+        }
+        .revision-vineta p { margin-bottom: 10px; }
+        .revision-vineta p:last-child { margin-bottom: 0; }
+        .revision-ops { list-style: none; margin: 14px 0 0; padding: 0; }
+        .revision-ops li {
+            display: flex; align-items: flex-start; gap: 9px;
+            padding: 7px 9px;
+            border-radius: 7px;
+            font-family: var(--font-body);
+            font-size: calc(var(--font-size-base) - 2px);
+            color: var(--text-body);
+            line-height: 1.45;
+        }
+        .revision-ops li.ok {
+            background: var(--primary-subtle);
+            color: var(--navy);
+        }
+        .rop-letra {
+            font-family: var(--font-title);
+            font-weight: 700; color: var(--text-muted);
+            min-width: 14px; flex-shrink: 0;
+        }
+        .revision-ops li.ok .rop-letra { color: var(--primary); }
+        .rop-texto { flex: 1; }
+        .rop-marca {
+            font-family: var(--font-title);
+            font-size: 9px; font-weight: 700;
+            color: var(--primary);
+            text-transform: uppercase; letter-spacing: 1px;
+            padding-top: 3px; flex-shrink: 0;
+        }
+
+        /* La respuesta como en las apps de casos clinicos: etiqueta pequena
+           arriba y el diagnostico grande como protagonista. */
         .answer-section {
             background: var(--primary-subtle);
-            padding: 16px 20px;
+            padding: 18px 20px 20px;
             margin: 0 -12px;
-            display: flex; align-items: center; gap: 14px;
         }
-        .answer-letter {
+        .answer-label {
+            display: flex; align-items: center; gap: 6px;
             font-family: var(--font-title);
-            font-size: 20px; font-weight: 700;
-            line-height: 36px;
-            text-align: center;
-            color: #FFFFFF;
-            background: var(--primary);
-            width: 36px; height: 36px;
-            border-radius: 10px;
-            flex-shrink: 0;
+            font-size: 11px; font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 1.2px;
+            margin-bottom: 8px;
         }
+        .answer-check { width: 15px; height: 15px; color: var(--primary); flex-shrink: 0; }
         .answer-text {
-            font-family: var(--font-body);
-            font-size: var(--font-size-base); font-weight: 600;
-            color: var(--navy);
-            line-height: 1.4;
+            font-family: var(--font-title);
+            font-size: 22px; font-weight: 600;
+            color: var(--primary);
+            line-height: 1.25;
+            letter-spacing: -0.01em;
         }
+
+        /* Iconos Phosphor: van rellenos, no con trazo */
+        .font-btn svg, .theme-btn svg, .img-chevron, .bib-chevron,
+        .img-toggle-icon svg, .scroll-top svg, .lb-btn svg, .footer-link svg {
+            fill: currentColor; stroke: none;
+        }
+        .font-btn svg { width: 17px; height: 17px; }
 
         /* ═══════════════════════════════════════════
            JUSTIFICATION
@@ -212,9 +294,9 @@
 
         .justification {
             font-family: var(--font-body);
-            font-size: calc(var(--font-size-base) - 3px);
+            font-size: calc(var(--font-size-base) - 1px);
             color: var(--text-body);
-            line-height: 1.55;
+            line-height: 1.6;
             text-align: left;
             transition: font-size 0.2s ease;
         }
@@ -550,9 +632,8 @@
            RESPONSIVE
         ═══════════════════════════════════════════ */
         @media (max-width: 420px) {
-            .hero-title { font-size: 19px; }
-            .answer-letter { width: 32px; height: 32px; line-height: 32px; font-size: 18px; }
-            .answer-text { font-size: 14px; }
+            /* el diagnostico es el protagonista: no se encoge en pantallas chicas */
+            .answer-text { font-size: 20px; }
         }
         @media (min-width: 768px) {
             :root { --font-size-base: 17px; }
@@ -571,7 +652,7 @@
             </div>
         </div>
     </div>
-    <button class="scroll-top" id="scrollTop"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg></button>
+    <button class="scroll-top" id="scrollTop"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M205.66,117.66a8,8,0,0,1-11.32,0L136,59.31V216a8,8,0,0,1-16,0V59.31L61.66,117.66a8,8,0,0,1-11.32-11.32l72-72a8,8,0,0,1,11.32,0l72,72A8,8,0,0,1,205.66,117.66Z"/></svg></button>
     <div class="bottom-bar"></div>
 
     <script>
@@ -790,25 +871,68 @@
             html += '<span class="header-logo-text">ACAMEDICS</span>';
             html += '<div class="header-divider"></div>';
             html += '<span class="header-case">Caso #'+esc(String(caseNum))+'</span>';
-            html += '</div></div>';
+            html += '</div>';
+            // Los controles viven en la barra superior, no al lado del titulo:
+            // asi el titulo queda solo, a todo el ancho, y la cabecera se lee de un golpe.
+            html += '<div class="ctrl-btns">';
+            html += '<button class="font-btn" id="fontCycle" title="Tamaño de letra"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M87.24,52.59a8,8,0,0,0-14.48,0l-64,136a8,8,0,1,0,14.48,6.81L39.9,160h80.2l16.66,35.4a8,8,0,1,0,14.48-6.81ZM47.43,144,80,74.79,112.57,144ZM200,96c-12.76,0-22.73,3.47-29.63,10.32a8,8,0,0,0,11.26,11.36c3.8-3.77,10-5.68,18.37-5.68,13.23,0,24,9,24,20v3.22A42.76,42.76,0,0,0,200,128c-22.06,0-40,16.15-40,36s17.94,36,40,36a42.73,42.73,0,0,0,24-7.25,8,8,0,0,0,16-.75V132C240,112.15,222.06,96,200,96Zm0,88c-13.23,0-24-9-24-20s10.77-20,24-20,24,9,24,20S213.23,184,200,184Z"/></svg></button>';
+            html += '<button class="theme-btn" id="themeToggle" title="Cambiar tema">';
+            html += '<svg class="icon-moon" viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23ZM188.9,190.34A88,88,0,0,1,65.66,67.11a89,89,0,0,1,31.4-26A106,106,0,0,0,96,56,104.11,104.11,0,0,0,200,160a106,106,0,0,0,14.92-1.06A89,89,0,0,1,188.9,190.34Z"/></svg>';
+            html += '<svg class="icon-sun" viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M120,40V16a8,8,0,0,1,16,0V40a8,8,0,0,1-16,0Zm72,88a64,64,0,1,1-64-64A64.07,64.07,0,0,1,192,128Zm-16,0a48,48,0,1,0-48,48A48.05,48.05,0,0,0,176,128ZM58.34,69.66A8,8,0,0,0,69.66,58.34l-16-16A8,8,0,0,0,42.34,53.66Zm0,116.68-16,16a8,8,0,0,0,11.32,11.32l16-16a8,8,0,0,0-11.32-11.32ZM192,72a8,8,0,0,0,5.66-2.34l16-16a8,8,0,0,0-11.32-11.32l-16,16A8,8,0,0,0,192,72Zm5.66,114.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32-11.32ZM48,128a8,8,0,0,0-8-8H16a8,8,0,0,0,0,16H40A8,8,0,0,0,48,128Zm80,80a8,8,0,0,0-8,8v24a8,8,0,0,0,16,0V216A8,8,0,0,0,128,208Zm112-88H216a8,8,0,0,0,0,16h24a8,8,0,0,0,0-16Z"/></svg>';
+            html += '</button></div>';
+            html += '</div>';
 
             // ── PRIMARY DIVIDER ──
             html += '<div class="divider--primary"></div>';
 
+            // ── CHIPS de especialidad / sistema ──
+            // Salen del titulo del .md ("PEDIATRIA - SISTEMA NERVIOSO - Topico").
+            // Si el caso no trae tags, no se dibuja nada.
+            const tags = Array.isArray(d.tags) ? d.tags.filter(t => t && String(t).trim()) : [];
+            if (tags.length) {
+                html += '<div class="chips">';
+                tags.slice(0, 4).forEach(t => {
+                    html += '<span class="chip">' + esc(String(t).trim()) + '</span>';
+                });
+                html += '</div>';
+            }
+
+            // ── BLOQUE DE REVISION (solo mientras el caso NO esta publicado) ──
+            // Deja ver la viñeta y las opciones para verificar el caso completo
+            // antes de mandarlo al canal. Al publicarse desaparece solo.
+            if (d.published === false && (d.vignette || (d.options || []).length)) {
+                html += '<div class="revision">';
+                html += '<div class="revision-tag">Vista previa · solo tú ves esto</div>';
+                if (d.vignette) {
+                    const vparas = String(d.vignette).split(/\n\s*\n/).filter(p => p.trim());
+                    html += '<div class="revision-vineta">';
+                    vparas.forEach(p => { html += '<p>' + mdBold(esc(p.trim())) + '</p>'; });
+                    html += '</div>';
+                }
+                const ops = Array.isArray(d.options) ? d.options : [];
+                if (ops.length) {
+                    html += '<ul class="revision-ops">';
+                    ops.forEach(o => {
+                        const esCorrecta = (o.letter || '').toUpperCase() === (d.correct_letter || '').toUpperCase();
+                        html += '<li class="' + (esCorrecta ? 'ok' : '') + '">'
+                             +    '<span class="rop-letra">' + esc(o.letter || '') + '</span>'
+                             +    '<span class="rop-texto">' + esc(o.text || '') + '</span>'
+                             +    (esCorrecta ? '<span class="rop-marca">correcta</span>' : '')
+                             +  '</li>';
+                    });
+                    html += '</ul>';
+                }
+                html += '</div>';
+            }
+
             // ── HERO: title + answer ──
             html += '<div class="hero">';
             html += '<div class="eyebrow-row">';
-            html += '<h2 class="hero-title">Análisis y fundamentación<br>del caso clínico</h2>';
-            html += '<div class="ctrl-btns">';
-            html += '<button class="font-btn" id="fontCycle">Aa</button>';
-            html += '<button class="theme-btn" id="themeToggle" title="Cambiar tema">';
-            html += '<svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>';
-            html += '<svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-            html += '</button></div>';
+            html += '<h2 class="hero-title">Análisis y fundamentación del caso clínico</h2>';
             html += '</div>';
             if (d.correct_letter && d.correct_text) {
                 html += '<div class="answer-section">';
-                html += '<div class="answer-letter">'+esc(d.correct_letter.toUpperCase())+'</div>';
+                html += '<div class="answer-label">' + "<svg class=\"answer-check\" viewBox=\"0 0 256 256\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z\"/></svg>" + 'Respuesta correcta</div>';
                 html += '<div class="answer-text">'+esc(d.correct_text)+'</div>';
                 html += '</div>';
             }
@@ -892,11 +1016,11 @@
                 html += '<div class="img-accordion open" id="imgAccordion">';
                 html += '<button class="img-toggle" id="imgToggle">';
                 html += '<div class="img-toggle-left">';
-                html += '<div class="img-toggle-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></div>';
+                html += '<div class="img-toggle-icon"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V158.75l-26.07-26.06a16,16,0,0,0-22.63,0l-20,20-44-44a16,16,0,0,0-22.62,0L40,149.37V56ZM40,172l52-52,80,80H40Zm176,28H194.63l-36-36,20-20L216,181.38V200ZM144,100a12,12,0,1,1,12,12A12,12,0,0,1,144,100Z"/></svg></div>';
                 html += '<span class="img-toggle-text">Recurso Adicional</span>';
                 html += '<span class="img-toggle-count">'+caseImages.length+'</span>';
                 html += '</div>';
-                html += '<svg class="img-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+                html += '<svg class="img-chevron" viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>';
                 html += '</button>';
                 html += '<div class="img-content">';
                 caseImages.forEach((url,i) => {
@@ -915,7 +1039,7 @@
                 html += '<div class="bib-toggle-num">'+bibRefs.length+'</div>';
                 html += '<span class="bib-toggle-text">Referencias bibliográficas</span>';
                 html += '</div>';
-                html += '<svg class="bib-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+                html += '<svg class="bib-chevron" viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M213.66,101.66l-80,80a8,8,0,0,1-11.32,0l-80-80A8,8,0,0,1,53.66,90.34L128,164.69l74.34-74.35a8,8,0,0,1,11.32,11.32Z"/></svg>';
                 html += '</button>';
                 html += '<div class="bib-content"><div class="bib-list">';
                 bibRefs.forEach((r,i) => {
@@ -941,10 +1065,10 @@
             // Social
             html += '<div class="footer-social">';
             html += '<a href="https://instagram.com/acamedics.co" target="_blank" rel="noopener" class="footer-link">';
-            html += '<svg viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" stroke="currentColor" stroke-width="1.5"/><circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.5"/><circle cx="17.5" cy="6.5" r="1.2" fill="currentColor"/></svg>';
+            html += '<svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160ZM176,24H80A56.06,56.06,0,0,0,24,80v96a56.06,56.06,0,0,0,56,56h96a56.06,56.06,0,0,0,56-56V80A56.06,56.06,0,0,0,176,24Zm40,152a40,40,0,0,1-40,40H80a40,40,0,0,1-40-40V80A40,40,0,0,1,80,40h96a40,40,0,0,1,40,40ZM192,76a12,12,0,1,1-12-12A12,12,0,0,1,192,76Z"/></svg>';
             html += '@acamedics.co</a>';
             html += '<a href="#" class="footer-link" id="tgScrollTop">';
-            html += '<svg viewBox="0 0 24 24" fill="none"><path d="M21.2 4.3L2.4 10.5c-.6.2-.6 1.1 0 1.3l4.5 1.7 1.7 5.5c.2.5.8.7 1.2.4l2.5-2 4.3 3.2c.5.4 1.2.1 1.3-.5L21.8 5.2c.2-.7-.3-1.2-.6-.9z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+            html += '<svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M228.88,26.19a9,9,0,0,0-9.16-1.57L17.06,103.93a14.22,14.22,0,0,0,2.43,27.21L72,141.45V200a15.92,15.92,0,0,0,10,14.83,15.91,15.91,0,0,0,17.51-3.73l25.32-26.26L165,220a15.88,15.88,0,0,0,10.51,4,16.3,16.3,0,0,0,5-.79,15.85,15.85,0,0,0,10.67-11.63L231.77,35A9,9,0,0,0,228.88,26.19Zm-61.14,36L78.15,126.35l-49.6-9.73ZM88,200V152.52l24.79,21.74Zm87.53,8L92.85,135.5l119-85.29Z"/></svg>';
             html += '@acamedics_co</a>';
             html += '</div>';
             // Copyright
@@ -954,11 +1078,11 @@
             // ── LIGHTBOX ──
             html += '<div class="lightbox" id="lightbox">'
                  +    '<div class="lb-bar">'
-                 +      '<button class="lb-btn" id="lightboxClose" title="Cerrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>'
+                 +      '<button class="lb-btn" id="lightboxClose" title="Cerrar"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"/></svg></button>'
                  +      '<span class="lb-zoom" id="lbZoom">100%</span>'
                  +      '<div class="lb-right">'
-                 +        '<button class="lb-btn" id="lbReset" title="Restablecer zoom"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>'
-                 +        '<button class="lb-btn" id="lbDownload" title="Descargar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></button>'
+                 +        '<button class="lb-btn" id="lbReset" title="Restablecer zoom"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M224,128a96,96,0,0,1-94.71,96H128A95.38,95.38,0,0,1,62.1,197.8a8,8,0,0,1,11-11.63A80,80,0,1,0,71.43,71.39a3.07,3.07,0,0,1-.26.25L44.59,96H72a8,8,0,0,1,0,16H24a8,8,0,0,1-8-8V56a8,8,0,0,1,16,0V85.8L60.25,60A96,96,0,0,1,224,128Z"/></svg></button>'
+                 +        '<button class="lb-btn" id="lbDownload" title="Descargar"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M224,144v64a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V144a8,8,0,0,1,16,0v56H208V144a8,8,0,0,1,16,0Zm-101.66,5.66a8,8,0,0,0,11.32,0l40-40a8,8,0,0,0-11.32-11.32L136,124.69V32a8,8,0,0,0-16,0v92.69L93.66,98.34a8,8,0,0,0-11.32,11.32Z"/></svg></button>'
                  +      '</div>'
                  +    '</div>'
                  +    '<img id="lightboxImg" src="" alt="">'
