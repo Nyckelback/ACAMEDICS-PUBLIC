@@ -680,6 +680,34 @@
             return true;
         }
 
+        // ── Rescate de contenido mal ubicado ─────────────────────────────
+        // Cuando un caso llega mal partido (le pasa a los largos enviados por
+        // Telegram), parte de la justificacion y el TIP terminan guardados dentro
+        // de la bibliografia. NO se descartan: se devuelven a su sitio, porque son
+        // texto que el autor escribio y el estudiante debe leer.
+        function rescatarContenido(d) {
+            const bruto = [];
+            const b = d && d.bibliography;
+            if (Array.isArray(b)) b.forEach(x => { if (typeof x === 'string') x.split('\n').forEach(l => bruto.push(l)); });
+            else if (typeof b === 'string') b.split('\n').forEach(l => bruto.push(l));
+            else return d;
+
+            const prosa = [], tips = [];
+            bruto.forEach(linea => {
+                const t = (linea || '').trim();
+                if (t.length < 12) return;
+                if (/^tip\s+acam[eé]dico/i.test(t)) { tips.push(t.replace(/^tip\s+acam[eé]dico\s*:?\s*/i, '')); return; }
+                // parrafo de justificacion: lleva negritas y no parece una cita
+                if (t.includes('**') && !/doi:|https?:\/\//i.test(t)) prosa.push(t);
+            });
+            if (!prosa.length && !tips.length) return d;
+
+            const copia = Object.assign({}, d);
+            if (prosa.length) copia.justification = (copia.justification || '').trimEnd() + '\n\n' + prosa.join('\n\n');
+            if (tips.length && !(copia.tip || '').trim()) copia.tip = tips.join(' ');
+            return copia;
+        }
+
         function parseBibliography(bib) {
             let bruto = [];
             if (Array.isArray(bib) && bib.length > 0) {
@@ -750,6 +778,7 @@
         }
 
         function renderCase(d) {
+            d = rescatarContenido(d);
             const phrase = getPhrase();
             const caseNum = caseDisplayNum(d.id || '');
             let html = '';
