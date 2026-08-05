@@ -62,7 +62,7 @@ body{background:var(--negro);color:var(--blanco);font-family:var(--f);
 [data-theme="dark"] .marca-logo .brr-4{fill:#2AA3AC}
 [data-theme="dark"] .marca-logo .brr-2{fill:#1F7C85}
 [data-theme="dark"] .marca-logo .brr-3{fill:#1A6B72}
-.quien{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0;
+.quien{width:34px;height:34px;border-radius:50%;overflow:hidden;flex-shrink:0;
   margin-left:4px;border:1px solid var(--linea);
   background:color-mix(in srgb,var(--marca) 10%,transparent);
   display:flex;align-items:center;justify-content:center}
@@ -131,7 +131,15 @@ h1{font-family:var(--ft);font-size:32px;font-weight:700;letter-spacing:-0.032em;
 const URL_BASE='https://xuxewzzeqgluimfmigjs.supabase.co/rest/v1/cases';
 const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1eGV3enplcWdsdWltZm1pZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NjYwMjcsImV4cCI6MjA4ODI0MjAyN30.fDyK2PwJCpCOi8axSNw_hmFRe5tSxyptoErWIpS2JLQ';
 const wa=window.Telegram&&window.Telegram.WebApp;
-if(wa&&wa.ready) wa.ready(), wa.expand&&wa.expand();
+if(wa){
+  wa.ready&&wa.ready(); wa.expand&&wa.expand();
+  // el tema arranca igual que el cliente; despues manda el boton
+  if(wa.colorScheme==='dark') document.body.dataset.theme='dark';
+  wa.onEvent&&wa.onEvent('themeChanged',()=>{
+    document.body.dataset.theme = wa.colorScheme==='dark' ? 'dark' : '';
+  });
+  wa.setHeaderColor&&wa.setHeaderColor('bg_color');
+}
 
 function toque(t){ const h=wa&&wa.HapticFeedback;
   try{ if(h){ t==='seleccion'?h.selectionChanged():h.impactOccurred(t||'light'); return; }
