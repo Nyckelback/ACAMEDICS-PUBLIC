@@ -797,6 +797,14 @@
           .fab.abajo .fab-mas{animation:none}
         }
         body{padding-bottom:86px}
+        /* Cuando el caso no trae etiquetas, el aire que estas ocupaban quedaba
+           igual y abria un vacio entre el titulo y "La correcta". */
+        .hero.sin-chips{padding-top:0 !important;padding-bottom:6px !important}
+        /* en modo tarjetas el bloque de texto corrido queda vacio: seguia
+           ocupando su padding y alargaba el hueco */
+        .justification-section:empty,
+        .justification-section:has(> .justification:empty){display:none}
+        .hero + .sec,.justification-section + .sec{margin-top:14px}
         .justification p:first-child::first-letter{
           font-size:inherit !important;color:inherit !important;font-weight:inherit !important;
           float:none !important;line-height:inherit !important;margin:0 !important;
@@ -1088,7 +1096,7 @@
             }
 
             // ── HERO: title + answer ──
-            html += '<div class="hero">';
+            html += '<div class="hero'+(tags.length ? '' : ' sin-chips')+'">';
             html += '<div class="eyebrow-row">';
             html += '<h2 class="hero-title">Análisis y fundamentación del caso clínico</h2>';
             html += '</div>';
@@ -1166,7 +1174,7 @@
                     html += '<div class="opc">';
                     html += '<div class="opc-cab"><span class="fila-ico ok">'
                          +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
-                         +  '</span><span class="fila-n">'+esc(letraOk+' · '+(d.correct_text||''))+'</span>'
+                         +  '</span><span class="fila-n">'+esc('Opción '+letraOk)+'</span>'
                          +  '<span class="ok-est">Correcta</span></div>';
                     cuerpos.slice(0, corte).forEach(t => { html += '<p>'+soloPrimeraNegrita(t)+'</p>'; });
                     html += '</div>';
