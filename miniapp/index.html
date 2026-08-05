@@ -738,8 +738,12 @@
         .tip-header{gap:10px !important;margin-bottom:13px !important}
         .tip-icon{border-radius:10px !important}
         .tip-label{font-family:var(--ft) !important}
+        /* La linea se corre hacia el texto sin mover el texto: lo que baja es el
+           hueco entre ambos (16 -> 9), y el margen devuelve esos 7 px para que el
+           parrafo siga arrancando donde arrancaba. */
         .tip-text{font-size:calc(var(--base) - 1.5px) !important;line-height:1.55 !important;
-          padding-left:16px !important;border-left:2px solid var(--primary) !important}
+          margin-left:7px !important;
+          padding-left:9px !important;border-left:2px solid var(--primary) !important}
 
         /* ── Bibliografia y recurso: encabezado propio ── */
         .bib-section{padding:0 !important;margin-top:26px}
