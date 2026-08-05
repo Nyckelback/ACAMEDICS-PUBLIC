@@ -1894,7 +1894,7 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
         logger.info(f"Poll published for case {case_uuid}: {poll_msg.message_id}")
         supabase.update_case(
             case_uuid,
-            {"telegram_message_id": poll_msg.message_id, "published": True, "display_number": case_display_num(case_uuid)},
+            {"telegram_message_id": poll_msg.message_id, "published": True, "published_at": datetime.now(pytz.timezone(Config.TZ)).isoformat(), "display_number": case_display_num(case_uuid)},
         )
 
         # Edit the original message to show confirmation (no new message)
@@ -2090,7 +2090,7 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             case_uuid,
             {
                 "telegram_message_id": poll_msg.message_id,
-                "published": True,
+                "published": True, "published_at": datetime.now(pytz.timezone(Config.TZ)).isoformat(),
                 "display_number": case_display_num(case_uuid),
             },
         )
