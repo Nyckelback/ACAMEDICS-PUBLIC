@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>ACAMEDICS · Casos</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+svg{display:block}
+/* .quien img{display:block} le ganaba en especificidad a [hidden] y la imagen
+   vacia se pintaba igual, corriendo las iniciales. */
+[hidden]{display:none !important}
+/* Paleta y tipografias de la Mini App de produccion. De Phantom queda la
+   ESTRUCTURA (titulo grande, secciones, tarjetas, filas con letra); el color
+   vuelve a ser el de ACAMEDICS: blanco, teal, y el gris solo para lo secundario. */
+:root{
+  --negro:#FFFFFF;        /* fondo */
+  --tarjeta:#FFFFFF;      /* la tarjeta ya no es gris: se define con su borde */
+  --tarjeta-2:#F1F5F7;    /* circulo de la letra */
+  --linea:#E2E8F0;
+  --blanco:#1A1A2E;       /* titulos */
+  --gris:#333333;         /* cuerpo */
+  --gris-2:#7C8B99;       /* secundario */
+  --marca:#18828C;
+  --bien:#18828C;         /* Pagoda Blue, el de la marca. No se cambia. */
+  --mal:#C84677;
+  --acento:#C84677;   /* magenta: solo vive en la barra de gradiente */
+  --base:15px;            /* tamano de lectura; lo cicla el boton Aa */
+  --f:'Source Sans 3',-apple-system,BlinkMacSystemFont,sans-serif;
+  --ft:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;  /* titulos */
+}
+[data-theme="dark"]{
+  --negro:#161616;
+  --tarjeta:#1E1E1E;
+  --tarjeta-2:#2A2A2A;
+  --linea:#2A2A2A;
+  --blanco:#FFFFFF;
+  --gris:#ECECEC;
+  --gris-2:#8A8A8A;
+  --marca:#20A4B0;
+  --bien:#20A4B0;
+  --mal:#E05A8D;
+  --acento:#E05A8D;
+}
+body{background:var(--negro);color:var(--blanco);font-family:var(--f);
+  font-size:var(--base);line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:40px}
+.p{max-width:600px;margin:0 auto;padding:0 16px}
+
+body{background:var(--negro);color:var(--blanco);font-family:var(--f);
+  font-size:var(--base);line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:40px}
+.p{max-width:600px;margin:0 auto;padding:0 16px}
+
+.top{display:flex;align-items:center;justify-content:space-between;padding:14px 0}
+.top-izq{display:flex;align-items:center;gap:10px}
+.marca-logo{width:26px;height:26px;flex-shrink:0;display:block}
+.marca-logo svg{width:100%;height:100%;display:block}
+[data-theme="dark"] .marca-logo .brr-1{fill:#3FD3DB}
+[data-theme="dark"] .marca-logo .brr-4{fill:#2AA3AC}
+[data-theme="dark"] .marca-logo .brr-2{fill:#1F7C85}
+[data-theme="dark"] .marca-logo .brr-3{fill:#1A6B72}
+.quien{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0;
+  margin-left:4px;border:1px solid var(--linea);
+  background:color-mix(in srgb,var(--marca) 10%,transparent);
+  display:flex;align-items:center;justify-content:center}
+.quien img{width:100%;height:100%;object-fit:cover;display:block}
+.quien-ini{font-family:var(--ft);font-size:12px;font-weight:700;color:var(--marca)}
+.ico-btn{width:34px;height:34px;border-radius:10px;background:var(--negro);
+  border:1px solid var(--linea);display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--blanco)}
+.ico-btn svg{width:17px;height:17px}
+
+h1{font-family:var(--ft);font-size:32px;font-weight:700;letter-spacing:-0.032em;
+  line-height:1.05;margin-top:10px}
+.cuenta{font-family:var(--ft);font-size:16px;font-weight:600;color:var(--marca);
+  margin-top:7px;letter-spacing:-0.015em}
+
+.buscar{display:flex;align-items:center;gap:9px;margin:20px 0 6px;
+  border:1px solid var(--linea);border-radius:14px;padding:11px 14px;
+  background:var(--negro)}
+.buscar svg{width:17px;height:17px;color:var(--gris-2);flex-shrink:0}
+.buscar input{flex:1;border:none;outline:none;background:none;font-family:var(--f);
+  font-size:15px;color:var(--blanco);min-width:0}
+.buscar input::placeholder{color:var(--gris-2)}
+.buscar:focus-within{border-color:var(--marca)}
+
+.caso{display:flex;align-items:center;gap:13px;padding:14px 2px;
+  border-bottom:1px solid var(--linea);text-decoration:none;color:inherit;
+  -webkit-tap-highlight-color:transparent}
+.caso:last-child{border-bottom:none}
+.caso-n{font-family:var(--ft);font-size:12px;font-weight:700;color:var(--gris-2);
+  background:var(--tarjeta-2);border-radius:8px;padding:6px 8px;min-width:42px;
+  text-align:center;flex-shrink:0}
+.caso-t{flex:1;min-width:0}
+.caso-dx{display:block;font-family:var(--ft);font-size:15.5px;font-weight:600;letter-spacing:-0.01em;
+  line-height:1.3}
+.caso-f{display:block;font-size:12.5px;color:var(--gris-2);margin-top:2px}
+.caso-ir{width:16px;height:16px;color:var(--gris-2);flex-shrink:0}
+
+.aviso{padding:40px 0;text-align:center;color:var(--gris-2);font-size:14px}
+</style>
+</head>
+<body>
+<div class="p">
+
+  <div class="top">
+    <div class="top-izq">
+      <span class="marca-logo"><svg viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg"><path class="brr-3" fill="#0e4247" d="m145.66,87.07h0s0-3.1,0-3.1l-49.57,22.81c-3.85,1.78-8.31,1.76-12.16-.01l-49.57-22.89v3.2h0s0,0,0,0v37.58c.5-.03,1-.03,1.51-.03,7.65,0,15.02,1.18,21.96,3.37.05.01.1.03.15.04,10.18,2.88,21.86,8.56,31.13,19.7.04.03.91,1.11.91,1.11,0,0,.87-1.09.91-1.11,9.36-11.24,21.16-16.94,31.4-19.79.05-.01.11-.03.18-.05,6.84-2.12,14.13-3.27,21.67-3.27.5,0,.99,0,1.49.03v-29.77h0v-7.81Z"/><path class="brr-4" fill="#18757e" d="m139.52,117.84s-34.94,3.42-49.52,31.01c0,0-12.19-28.82-55.65-29.38v-32.39l40.97,26.28c7.73,4.96,17.45,5.83,25.86,2.12.15-.07,38.33-17.75,38.33-17.75v20.12Z"/><path class="brr-1" fill="#1ba8af" d="m85.97,31.98L1,66.09l83.37,38.36c3.57,1.64,7.68,1.64,11.25,0l83.37-38.36L94.03,31.98c-2.57-1.11-5.48-1.11-8.05,0Z"/><path class="brr-4" fill="#18757e" d="m95.63,104.45c-6.05,2.78-11.25,0-11.25,0L1,66.09v4.75s0,.13.01.19c.07.58.43,1.09.97,1.34l80.81,37.56c4.57,2.13,9.85,2.13,14.43,0l80.81-37.56c.54-.25.9-.76.97-1.34h0c0-.13.01-.26.01-.39v-4.56l-83.37,38.36Z"/><path class="brr-2" fill="#12585f" d="m163.85,122.56l3.45,20.74h-12.2l3.77-20.59c-2.21-.92-3.77-3.1-3.77-5.64s1.56-4.71,3.77-5.65l.04-36.1-61.56-6.93c-1.44,1.36-4.3,2.21-7.55,2.06-4.6-.21-8.23-2.34-8.12-4.75,0-.14.03-.28.06-.42.08-.36.25-.7.49-1.02,0,0,0,0,0,0,1.23-1.64,4.36-2.7,7.98-2.54,3.92.18,7.14,1.76,7.93,3.71l65.64,7.65-.03,38.46c2.09.97,3.54,3.06,3.54,5.53s-1.4,4.51-3.45,5.48Z"/></svg></span>
+      <div class="quien"><img id="avatar" alt="" hidden><span class="quien-ini" id="inicial">AC</span></div>
+    </div>
+    <button class="ico-btn" id="tema" aria-label="Modo dia o noche">
+      <svg viewBox="0 0 256 256" fill="currentColor"><path d="M233.54,142.23a8,8,0,0,0-8-2,88.08,88.08,0,0,1-109.8-109.8,8,8,0,0,0-10-10,104.84,104.84,0,0,0-52.91,37A104,104,0,0,0,136,224a103.09,103.09,0,0,0,62.52-20.88,104.84,104.84,0,0,0,37-52.91A8,8,0,0,0,233.54,142.23Z"/></svg>
+    </button>
+  </div>
+
+  <h1>Casos</h1>
+  <div class="cuenta" id="cuenta">Cargando…</div>
+
+  <label class="buscar">
+    <svg viewBox="0 0 256 256" fill="currentColor"><path d="M232.49,215.51,185,168a92.12,92.12,0,1,0-17,17l47.53,47.54a12,12,0,0,0,17-17ZM44,112a68,68,0,1,1,68,68A68.07,68.07,0,0,1,44,112Z"/></svg>
+    <input id="q" type="search" placeholder="Buscar por diagnostico o numero" autocomplete="off">
+  </label>
+
+  <div id="lista"><div class="aviso">Cargando casos…</div></div>
+</div>
+
+<script>
+const URL_BASE='https://xuxewzzeqgluimfmigjs.supabase.co/rest/v1/cases';
+const ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh1eGV3enplcWdsdWltZm1pZ2pzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NjYwMjcsImV4cCI6MjA4ODI0MjAyN30.fDyK2PwJCpCOi8axSNw_hmFRe5tSxyptoErWIpS2JLQ';
+const wa=window.Telegram&&window.Telegram.WebApp;
+if(wa&&wa.ready) wa.ready(), wa.expand&&wa.expand();
+
+function toque(t){ const h=wa&&wa.HapticFeedback;
+  try{ if(h){ t==='seleccion'?h.selectionChanged():h.impactOccurred(t||'light'); return; }
+       if(navigator.vibrate) navigator.vibrate(8); }catch(e){} }
+
+document.getElementById('tema').onclick=()=>{ toque('light');
+  document.body.dataset.theme = document.body.dataset.theme==='dark'?'':'dark'; };
+
+const u=wa&&wa.initDataUnsafe?wa.initDataUnsafe.user:null;
+if(u){ const ini=document.getElementById('inicial');
+  ini.textContent=(((u.first_name||'?')[0]||'')+((u.last_name||'')[0]||'')).toUpperCase();
+  if(u.photo_url){ const im=document.getElementById('avatar');
+    im.onload=()=>{im.hidden=false;ini.hidden=true}; im.onerror=()=>{}; im.src=u.photo_url; } }
+
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// published_at viene vacio en los casos ya publicados, asi que la fecha sale de created_at
+const fecha=c=>{ const d=c.published_at||c.created_at; if(!d) return '';
+  return new Date(d).toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'}); };
+
+let casos=[];
+function pintar(lista){
+  const cont=document.getElementById('lista');
+  if(!lista.length){ cont.innerHTML='<div class="aviso">Ningun caso coincide.</div>'; return; }
+  cont.innerHTML=lista.map(c=>
+    '<a class="caso" href="index.html?case='+encodeURIComponent(c.id)+'">'
+    +'<span class="caso-n">'+(c.display_number||c.case_number)+'</span>'
+    +'<span class="caso-t"><span class="caso-dx">'+esc(c.correct_text||'Sin titulo')+'</span>'
+    +'<span class="caso-f">'+fecha(c)+'</span></span>'
+    +'<svg class="caso-ir" viewBox="0 0 256 256" fill="currentColor"><path d="M181.66,133.66l-80,80a8,8,0,0,1-11.32-11.32L164.69,128,90.34,53.66a8,8,0,0,1,11.32-11.32l80,80A8,8,0,0,1,181.66,133.66Z"/></svg></a>'
+  ).join('');
+  cont.querySelectorAll('.caso').forEach(a=>a.addEventListener('click',()=>toque('seleccion')));
+}
+
+fetch(URL_BASE+'?published=eq.true&select=id,case_number,display_number,correct_text,published_at,created_at&order=case_number.desc',
+      {headers:{apikey:ANON}})
+ .then(r=>r.json())
+ .then(d=>{ casos=Array.isArray(d)?d:[];
+   document.getElementById('cuenta').textContent=casos.length+' publicados';
+   pintar(casos); })
+ .catch(()=>{ document.getElementById('cuenta').textContent='';
+   document.getElementById('lista').innerHTML='<div class="aviso">No se pudieron cargar los casos.</div>'; });
+
+document.getElementById('q').addEventListener('input',e=>{
+  const t=e.target.value.trim().toLowerCase();
+  pintar(!t?casos:casos.filter(c=>
+    (c.correct_text||'').toLowerCase().includes(t) ||
+    String(c.display_number||c.case_number).includes(t)));
+});
+</script>
+</body>
+</html>

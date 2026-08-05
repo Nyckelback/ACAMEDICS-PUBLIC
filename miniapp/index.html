@@ -92,7 +92,8 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        .app { max-width: 640px; margin: 0 auto; padding: 0 12px 12px; }
+        /* 16px es el margen lateral estandar en movil (iOS HIG y Material) */
+        .app { max-width: 640px; margin: 0 auto; padding: 0 16px 12px; }
 
         /* ═══════════════════════════════════════════
            LOADING & ERROR
@@ -135,7 +136,7 @@
            atencion sin separar nada y se leia como adorno. */
         .divider--primary {
             height: 1px;
-            margin: 0 -12px;
+            margin: 0 -16px;
             background: var(--border);
         }
 
@@ -263,7 +264,7 @@
         .answer-section {
             background: var(--primary-subtle);
             padding: 18px 20px 20px;
-            margin: 0 -12px;
+            margin: 0 -16px;
         }
         .answer-label {
             display: flex; align-items: center; gap: 6px;
@@ -354,7 +355,7 @@
         .tip-section {
             padding: 0;
             background: var(--primary-subtle);
-            margin: 0 -12px;
+            margin: 0 -16px;
         }
         .tip-accent-bar {
             height: 3px;
@@ -643,6 +644,163 @@
             .tip-text { font-size: 17px; }
             .bib-ref { font-size: 14px; }
         }
+
+        /* ═══════════════════════════════════════════════════════════════
+           REDISEÑO 2026-08 — se añade al final para ganar por orden.
+           Estructura tomada de la maqueta: encabezado con logotipo, titulo
+           grande, tarjetas por opcion, TIP con su gradiente, FAB flotante.
+           ═══════════════════════════════════════════════════════════════ */
+        :root{ --base:16px; --ft:'Inter',-apple-system,BlinkMacSystemFont,sans-serif; }
+        svg{display:block}
+        /* .quien img{display:block} le ganaba a [hidden] y la imagen vacia se pintaba */
+        [hidden]{display:none !important}
+
+        /* ── Barra superior: logotipo completo y la foto de quien lee ── */
+        .header{padding:14px 0 !important}
+        .header-left{gap:8px !important}
+        .header-birrete{width:26px !important;height:26px !important}
+        .header-divider{display:none}
+        .header-logo-text{font-family:var(--ft) !important;font-size:14.5px !important;
+          font-weight:700 !important;letter-spacing:-0.02em !important;margin-top:0 !important}
+        .header-case{display:none}
+        .ctrl-btns{display:none !important}
+        .quien{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0;
+          border:1px solid var(--border);
+          background:color-mix(in srgb,var(--primary) 10%,transparent);
+          display:flex;align-items:center;justify-content:center}
+        .quien img{width:100%;height:100%;object-fit:cover}
+        .quien-ini{font-family:var(--ft);font-size:12px;font-weight:700;color:var(--primary)}
+        .divider--primary{display:none}
+
+        /* ── Encabezado del caso ── */
+        .chips{padding:16px 0 0 !important;gap:7px !important}
+        .chip{font-family:var(--ft) !important;font-size:9.5px !important;
+          letter-spacing:.5px !important;padding:6px 10px !important;
+          border-radius:9px !important}
+        .hero{padding:20px 0 18px !important}
+        .eyebrow-row{display:none !important}
+        .answer-section{margin:0 !important;padding:0 !important;border:none !important;
+          background:none !important}
+        .answer-text{font-family:var(--ft) !important;font-size:32px !important;
+          font-weight:700 !important;letter-spacing:-0.032em !important;
+          line-height:1.05 !important;color:var(--text) !important}
+        .answer-label{font-family:var(--ft) !important;font-size:19px !important;
+          font-weight:700 !important;letter-spacing:-0.018em !important;
+          color:var(--primary) !important;text-transform:none !important;
+          margin:9px 0 0 !important;order:2}
+        .answer-section{display:flex;flex-direction:column}
+        .answer-check{display:none !important}
+        .divider{display:none}
+
+        /* ── Titulo de seccion con chevron ── */
+        .sec{display:flex;align-items:center;gap:5px;font-family:var(--ft);
+          font-size:19px;font-weight:700;letter-spacing:-0.022em;margin:26px 0 12px;
+          color:var(--text)}
+        .sec svg{width:16px;height:16px;color:var(--text-muted)}
+
+        /* ── Tarjeta de opcion ── */
+        .opc{background:var(--bg);border:1px solid var(--border);border-radius:16px;
+          margin-bottom:10px;padding:16px}
+        .opc-cab{display:flex;align-items:flex-start;gap:11px;margin-bottom:10px}
+        .opc-cab .fila-n{padding-top:3px;flex:1;font-family:var(--ft);font-size:16px;
+          font-weight:600;letter-spacing:-0.01em;color:var(--text)}
+        .fila-ico{width:30px;height:30px;border-radius:11px;flex-shrink:0;
+          display:flex;align-items:center;justify-content:center;
+          font-family:var(--ft);font-weight:700;font-size:14px}
+        .fila-ico.ok{background:color-mix(in srgb,var(--primary) 18%,transparent);
+          color:var(--primary)}
+        .fila-ico.ok svg{width:17px;height:17px}
+        .fila-ico.no{background:var(--border);color:var(--text-body)}
+        .opc-est{width:26px;height:26px;border-radius:8px;flex-shrink:0;margin-top:2px;
+          background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);
+          display:flex;align-items:center;justify-content:center}
+        .opc-est svg{width:14px;height:14px}
+        .ok-est{width:auto;height:auto;background:none;border-radius:0;margin-top:3px;
+          font-family:var(--ft);font-size:12.5px;font-weight:700;color:var(--primary)}
+        .opc>p{font-size:calc(var(--base) - 1.5px);color:var(--text-body);line-height:1.6}
+        .opc>p+p{margin-top:13px}
+        .opc>p b{color:var(--text);font-weight:600}
+        .opc summary{cursor:pointer;list-style:none;margin-bottom:0;
+          -webkit-tap-highlight-color:transparent}
+        .opc summary::-webkit-details-marker{display:none}
+        .opc[open] summary{margin-bottom:10px}
+        .opc-flecha{width:17px;height:17px;color:var(--text-muted);flex-shrink:0;
+          margin-top:6px;transition:transform .2s ease}
+        .opc[open] .opc-flecha{transform:rotate(180deg)}
+
+        /* ── TIP: burbuja con su gradiente teal→magenta ── */
+        .tip-section{background:color-mix(in srgb,var(--primary) 4%,var(--bg)) !important;
+          border:1px solid color-mix(in srgb,var(--primary) 20%,transparent);
+          border-radius:16px !important;overflow:hidden;margin:22px 0 0 !important}
+        .tip-inner{padding:16px !important}
+        .tip-header{gap:10px !important;margin-bottom:13px !important}
+        .tip-icon{border-radius:10px !important}
+        .tip-label{font-family:var(--ft) !important}
+        .tip-text{font-size:calc(var(--base) - 1.5px) !important;line-height:1.55 !important;
+          padding-left:16px !important;border-left:2px solid var(--primary) !important}
+
+        /* ── Bibliografia y recurso: encabezado propio ── */
+        .bib-section{padding:0 !important;margin-top:26px}
+        .bib-toggle-num{font-family:var(--ft) !important;border-radius:7px !important}
+        .img-accordion{margin:26px 0 0 !important}
+        .img-content img{border-radius:16px}
+
+        /* ── Pie: el birrete acompaña a la palabra ── */
+        .footer-logo{display:flex;align-items:center;justify-content:center;gap:6px}
+        .pie-birrete{width:16px;height:16px;display:block}
+        .pie-birrete svg{width:100%;height:100%}
+        [data-theme="dark"] .pie-birrete .brr-1{fill:#3FD3DB}
+        [data-theme="dark"] .pie-birrete .brr-4{fill:#2AA3AC}
+        [data-theme="dark"] .pie-birrete .brr-2{fill:#1F7C85}
+        [data-theme="dark"] .pie-birrete .brr-3{fill:#1A6B72}
+        .footer-logo-text{font-family:var(--ft) !important;font-weight:600 !important}
+
+        /* ── FAB: un boton, dos funciones ──
+           Arriba de la pagina es el + que despliega Aa y el tema; al bajar se
+           convierte en flecha y sube. Las caras se cruzan girando. */
+        .scroll-top{display:none !important}
+        .fab{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom));
+          display:flex;flex-direction:column;align-items:center;gap:10px;z-index:50}
+        .fab button{cursor:pointer;font-family:var(--ft);border-radius:14px;
+          display:flex;align-items:center;justify-content:center;
+          -webkit-tap-highlight-color:transparent;
+          background:color-mix(in srgb,var(--bg) 70%,transparent);
+          -webkit-backdrop-filter:blur(22px) saturate(180%);
+          backdrop-filter:blur(22px) saturate(180%);
+          border:1px solid var(--border);
+          box-shadow:0 6px 20px rgba(15,23,42,.13), 0 1px 2px rgba(15,23,42,.06)}
+        [data-theme="dark"] .fab button{background:rgba(40,40,40,.7);border-color:#3a3a3a;
+          box-shadow:0 6px 22px rgba(0,0,0,.6)}
+        .fab svg{width:20px;height:20px}
+        .fab-op{width:42px;height:42px;color:var(--text);font-size:13px;font-weight:600;
+          opacity:0;transform:translateY(16px) scale(.72);pointer-events:none;
+          transition:opacity .2s ease, transform .34s cubic-bezier(.34,1.56,.64,1)}
+        .fab.abierto .fab-op{opacity:1;transform:none;pointer-events:auto;
+          transition-delay:calc(var(--i) * 45ms - 45ms)}
+        .fab-op.activo{color:var(--primary);border-color:var(--primary)}
+        .fab .fab-mas{width:52px;height:52px;color:var(--text);border-radius:50%;
+          position:relative}
+        .fab-mas .cara{position:absolute;
+          transition:opacity .15s ease, transform .26s cubic-bezier(.4,0,1,1)}
+        .fab-mas .cara-sube{opacity:0;transform:rotate(-100deg) scale(.55)}
+        .fab.abajo .cara-mas{opacity:0;transform:rotate(100deg) scale(.55)}
+        .fab.abajo .cara-sube{opacity:1;transform:none;
+          transition:opacity .22s ease .06s, transform .44s cubic-bezier(.34,1.6,.5,1) .04s}
+        .fab.abierto .cara-mas{opacity:1;transform:rotate(135deg);
+          transition:transform .4s cubic-bezier(.34,1.6,.5,1)}
+        .fab.abierto .cara-sube{opacity:0;transform:rotate(-100deg) scale(.55)}
+        .fab.abajo .fab-mas{animation:resorte .44s cubic-bezier(.34,1.6,.5,1)}
+        @keyframes resorte{0%{transform:scale(1)}40%{transform:scale(.86)}100%{transform:scale(1)}}
+        @media (prefers-reduced-motion:reduce){
+          .fab-op,.fab-mas .cara{transition:opacity .15s ease}
+          .fab.abierto .fab-op{transform:none}
+          .fab.abajo .fab-mas{animation:none}
+        }
+        body{padding-bottom:86px}
+        .justification p:first-child::first-letter{
+          font-size:inherit !important;color:inherit !important;font-weight:inherit !important;
+          float:none !important;line-height:inherit !important;margin:0 !important;
+          font-family:inherit !important}
     </style>
 </head>
 <body>
@@ -876,6 +1034,8 @@
             html += '</div>';
             // Los controles viven en la barra superior, no al lado del titulo:
             // asi el titulo queda solo, a todo el ancho, y la cabecera se lee de un golpe.
+            html += '<div class="quien"><img id="avatar" alt="" hidden>'
+                 +  '<span class="quien-ini" id="inicial">·</span></div>';
             html += '<div class="ctrl-btns">';
             html += '<button class="font-btn" id="fontCycle" title="Tamaño de letra"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M87.24,52.59a8,8,0,0,0-14.48,0l-64,136a8,8,0,1,0,14.48,6.81L39.9,160h80.2l16.66,35.4a8,8,0,1,0,14.48-6.81ZM47.43,144,80,74.79,112.57,144ZM200,96c-12.76,0-22.73,3.47-29.63,10.32a8,8,0,0,0,11.26,11.36c3.8-3.77,10-5.68,18.37-5.68,13.23,0,24,9,24,20v3.22A42.76,42.76,0,0,0,200,128c-22.06,0-40,16.15-40,36s17.94,36,40,36a42.73,42.73,0,0,0,24-7.25,8,8,0,0,0,16-.75V132C240,112.15,222.06,96,200,96Zm0,88c-13.23,0-24-9-24-20s10.77-20,24-20,24,9,24,20S213.23,184,200,184Z"/></svg></button>';
             html += '<button class="theme-btn" id="themeToggle" title="Cambiar tema">';
@@ -934,7 +1094,7 @@
             html += '</div>';
             if (d.correct_letter && d.correct_text) {
                 html += '<div class="answer-section">';
-                html += '<div class="answer-label">' + "<svg class=\"answer-check\" viewBox=\"0 0 256 256\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z\"/></svg>" + 'Respuesta correcta</div>';
+                html += '<div class="answer-label">' + "<svg class=\"answer-check\" viewBox=\"0 0 256 256\" fill=\"currentColor\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm45.66,85.66-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35a8,8,0,0,1,11.32,11.32Z\"/></svg>" + 'Respuesta correcta'+(d.correct_letter ? ' · opción '+esc(d.correct_letter.toUpperCase()) : '')+'</div>';
                 html += '<div class="answer-text">'+esc(d.correct_text)+'</div>';
                 html += '</div>';
             }
@@ -961,42 +1121,99 @@
                 } else {
                     paras = justText.split(/\n/).filter(p=>p.trim());
                 }
-                // ── Donde termina la CORRECTA y empiezan los descartes ──────────
-                // Tres senales, de mas fiable a menos. La correcta puede ocupar varios
-                // parrafos, asi que nunca se asume "el primero y ya".
-                //   1. El titulo "¿Por que no las otras?" (lo genera publish.py)
-                //   2. Un parrafo que arranca con "**B. Texto de la opcion**"
-                //   3. Una linea ---  (escape manual para casos escritos a mano)
-                // Si no aparece ninguna, no se marca nada: mejor callar que inventar
-                // una estructura que no se conoce.
-                const esTituloOtras = t => /^\**\s*¿?\s*por\s+qu[ée]\s+no\s+(las\s+)?(otras|dem[áa]s)/i.test(t);
+                // ── Dos modos, segun lo que el caso permita ─────────────────────
+                // Con separador (casos nuevos): cada opcion en su tarjeta, con su
+                // letra, su marca y su parrafo. Sin separador (los ya publicados):
+                // la justificacion corrida, como siempre. Se midio sobre los 121
+                // casos publicados: el 99 % no trae separador, y emparejar los
+                // parrafos por el nombre de la opcion solo acierta en el 41 %.
+                // Con esa tasa, rotular mal un parrafo de la correcta como descarte
+                // es un error clinico de presentacion: por eso no se adivina.
+                // "Incorrectas" a secas es el titulo nuevo; el "¿Por que no las otras?"
+                // se conserva porque los casos ya escritos lo traen.
+                const esTituloOtras = t =>
+                    /^\**\s*¿?\s*por\s+qu[ée]\s+no\s+(las\s+)?(otras|dem[áa]s)/i.test(t) ||
+                    /^\**\s*(las\s+)?(opciones\s+)?incorrectas\s*\**\s*:?\s*$/i.test(t);
                 const esRaya        = t => /^\s*([-*_])\1{2,}\s*$/.test(t);
                 const abreDescarte  = t => /^\*\*\s*[A-F][.)]\s/.test(t);
-                let enDescartes = false;
 
-                paras.forEach(p => {
-                    const merged = p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
-                    if (esTituloOtras(merged) || esRaya(merged)) {
-                        enDescartes = true;
-                        html += '<div class="just-sep"><span>¿Por qué no las <i>otras</i>?</span></div>';
-                        return;
-                    }
-                    if (abreDescarte(merged) && !enDescartes) {
-                        // primer descarte sin titulo previo: se abre la seccion igual
-                        enDescartes = true;
-                        html += '<div class="just-sep"><span>¿Por qué no las <i>otras</i>?</span></div>';
-                    }
-                    let parHtml = mdBold(esc(merged));
-                    // Deja en negrita SOLO la primera de cada párrafo (lo realmente relevante);
-                    // las demás se muestran en texto normal. Para desactivar: borrar este bloque.
+                const fusion = p => p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
+                const cuerpos = paras.map(fusion);
+                const corte = cuerpos.findIndex(t => esTituloOtras(t) || esRaya(t) || abreDescarte(t));
+
+                function soloPrimeraNegrita(t){
                     let primera = true;
-                    parHtml = parHtml.replace(/<b>([\s\S]*?)<\/b>/g, (m, dentro) => {
+                    return mdBold(esc(t)).replace(/<b>([\s\S]*?)<\/b>/g, (m, dentro) => {
                         if (primera) { primera = false; return m; }
                         return dentro;
                     });
-                    html += '<p'+(enDescartes ? ' class="descarte"' : '')+'>'+parHtml+'</p>';
-                });
-                html += '</div></div>';
+                }
+
+                if (corte === -1) {
+                    // ── MODO CORRIDO ──
+                    cuerpos.forEach(t => { html += '<p>'+soloPrimeraNegrita(t)+'</p>'; });
+                    html += '</div></div>';
+                } else {
+                    // ── MODO TARJETAS ──
+                    html += '</div></div>';   // cierra el bloque de texto corrido
+
+                    const ops = Array.isArray(d.options) ? d.options : [];
+                    const letraOk = (d.correct_letter || '').toUpperCase();
+
+                    // La correcta: todo lo anterior al corte, en una sola tarjeta
+                    html += '<div class="sec">La correcta'
+                         +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>';
+                    html += '<div class="opc">';
+                    html += '<div class="opc-cab"><span class="fila-ico ok">'
+                         +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+                         +  '</span><span class="fila-n">'+esc(letraOk+' · '+(d.correct_text||''))+'</span>'
+                         +  '<span class="ok-est">Correcta</span></div>';
+                    cuerpos.slice(0, corte).forEach(t => { html += '<p>'+soloPrimeraNegrita(t)+'</p>'; });
+                    html += '</div>';
+
+                    // Los descartes: uno por parrafo, en el orden en que vienen
+                    const resto = cuerpos.slice(corte).filter(t => !esTituloOtras(t) && !esRaya(t));
+                    if (resto.length) {
+                        html += '<div class="sec">Incorrectas'
+                             +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></div>';
+                        const malas = ops.filter(o => (o.letter||'').toUpperCase() !== letraOk);
+                        resto.forEach((t, i) => {
+                            const o = malas[i];
+                            // La letra sale de la opcion cuando el parrafo la nombra al
+                            // abrir ("**B. Candidiasis**"); si no, del orden de la lista.
+                            // La letra sale, por orden de fiabilidad:
+                            //   1. "(opcion A)" dentro del parrafo — explicita, no depende
+                            //      del orden en que vengan los descartes
+                            //   2. "**B. Nombre**" al abrir el parrafo (formato anterior)
+                            //   3. el orden de la lista de opciones (ultimo recurso)
+                            const mParen = t.match(/\(\s*opci[oó]n\s+([A-F])\s*\)/i);
+                            const mAbre  = t.match(/^\*\*\s*([A-F])[.)]\s*([^*]+?)\s*\*\*/);
+                            let letra, nombre, texto = t;
+                            if (mParen) {
+                                letra = mParen[1].toUpperCase();
+                                const op = ops.find(x => (x.letter||'').toUpperCase() === letra);
+                                nombre = op ? (op.text||'') : '';
+                                // el "(opcion A)" era para mi, no para quien lee
+                                texto = t.replace(mParen[0], '').replace(/\s{2,}/g, ' ')
+                                         .replace(/\s+([,.;:])/g, '$1').trim();
+                            } else if (mAbre) {
+                                letra = mAbre[1]; nombre = mAbre[2];
+                                texto = t.replace(mAbre[0], '').replace(/^[\s.:—–-]+/, '');
+                            } else {
+                                letra  = o ? (o.letter||'').toUpperCase() : '';
+                                nombre = o ? (o.text||'') : '';
+                            }
+                            html += '<details class="opc"><summary class="opc-cab">'
+                                 +   '<span class="fila-ico no">'+esc(letra)+'</span>'
+                                 +   '<span class="fila-n">'+esc(nombre)+'</span>'
+                                 +   '<span class="opc-est" aria-label="Incorrecta">'
+                                 +     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
+                                 +   '</span>'
+                                 +   '<svg class="opc-flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
+                                 +  '</summary><p>'+soloPrimeraNegrita(texto)+'</p></details>';
+                        });
+                    }
+                }
             }
 
             // ── TIP SECTION (full-bleed) ──
@@ -1062,6 +1279,7 @@
             html += '</div>';
             // Logo
             html += '<div class="footer-logo">';
+            html += '<span class="pie-birrete">'+'<svg viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg"><path class="brr-3" fill="#0e4247" d="m145.66,87.07h0s0-3.1,0-3.1l-49.57,22.81c-3.85,1.78-8.31,1.76-12.16-.01l-49.57-22.89v3.2h0s0,0,0,0v37.58c.5-.03,1-.03,1.51-.03,7.65,0,15.02,1.18,21.96,3.37.05.01.1.03.15.04,10.18,2.88,21.86,8.56,31.13,19.7.04.03.91,1.11.91,1.11,0,0,.87-1.09.91-1.11,9.36-11.24,21.16-16.94,31.4-19.79.05-.01.11-.03.18-.05,6.84-2.12,14.13-3.27,21.67-3.27.5,0,.99,0,1.49.03v-29.77h0v-7.81Z"/><path class="brr-4" fill="#18757e" d="m139.52,117.84s-34.94,3.42-49.52,31.01c0,0-12.19-28.82-55.65-29.38v-32.39l40.97,26.28c7.73,4.96,17.45,5.83,25.86,2.12.15-.07,38.33-17.75,38.33-17.75v20.12Z"/><path class="brr-1" fill="#1ba8af" d="m85.97,31.98L1,66.09l83.37,38.36c3.57,1.64,7.68,1.64,11.25,0l83.37-38.36L94.03,31.98c-2.57-1.11-5.48-1.11-8.05,0Z"/><path class="brr-4" fill="#18757e" d="m95.63,104.45c-6.05,2.78-11.25,0-11.25,0L1,66.09v4.75s0,.13.01.19c.07.58.43,1.09.97,1.34l80.81,37.56c4.57,2.13,9.85,2.13,14.43,0l80.81-37.56c.54-.25.9-.76.97-1.34h0c0-.13.01-.26.01-.39v-4.56l-83.37,38.36Z"/><path class="brr-2" fill="#12585f" d="m163.85,122.56l3.45,20.74h-12.2l3.77-20.59c-2.21-.92-3.77-3.1-3.77-5.64s1.56-4.71,3.77-5.65l.04-36.1-61.56-6.93c-1.44,1.36-4.3,2.21-7.55,2.06-4.6-.21-8.23-2.34-8.12-4.75,0-.14.03-.28.06-.42.08-.36.25-.7.49-1.02,0,0,0,0,0,0,1.23-1.64,4.36-2.7,7.98-2.54,3.92.18,7.14,1.76,7.93,3.71l65.64,7.65-.03,38.46c2.09.97,3.54,3.06,3.54,5.53s-1.4,4.51-3.45,5.48Z"/></svg>'+'</span>';
             html += '<span class="footer-logo-text">ACAMEDICS</span>';
             html += '</div>';
             // Social
@@ -1076,6 +1294,19 @@
             // Copyright
             html += '<div class="footer-copy">&copy; '+new Date().getFullYear()+' ACAMEDICS. Todos los derechos reservados.</div>';
             html += '</div>';
+
+            // ── ACCIONES FLOTANTES ──
+            // Un solo boton: arriba despliega Aa y el tema; al bajar se vuelve flecha.
+            html += '<div class="fab" id="fab">'
+                 +   '<button class="fab-op" style="--i:2" id="fabLetra" aria-label="Tamano de letra">Aa</button>'
+                 +   '<button class="fab-op" style="--i:1" id="fabTema" aria-label="Modo dia o noche">'
+                 +     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>'
+                 +   '</button>'
+                 +   '<button class="fab-mas" id="fabMas" aria-label="Acciones" aria-expanded="false">'
+                 +     '<svg class="cara cara-mas" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>'
+                 +     '<svg class="cara cara-sube" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg>'
+                 +   '</button>'
+                 + '</div>';
 
             // ── LIGHTBOX ──
             html += '<div class="lightbox" id="lightbox">'
@@ -1101,6 +1332,69 @@
             // Images accordion
             const it = document.getElementById('imgToggle');
             if (it) it.addEventListener('click', () => { haptic('light'); document.getElementById('imgAccordion').classList.toggle('open'); });
+
+            // ── Acciones flotantes: un boton con dos funciones ──
+            const fab = document.getElementById('fab');
+            const btnMas = document.getElementById('fabMas');
+            let abajo = false;
+            btnMas.addEventListener('click', e => {
+                e.stopPropagation(); haptic('light');
+                if (abajo && !fab.classList.contains('abierto')) {
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    return;
+                }
+                const abierto = fab.classList.toggle('abierto');
+                btnMas.setAttribute('aria-expanded', abierto);
+            });
+            document.addEventListener('click', e => {
+                if (!fab.contains(e.target)) fab.classList.remove('abierto');
+            });
+            // Umbrales distintos para ir y volver: la flecha se queda mientras subis
+            // y solo vuelve a ser + al llegar arriba del todo.
+            window.addEventListener('scroll', () => {
+                if (!abajo && window.scrollY > 420) abajo = true;
+                else if (abajo && window.scrollY < 40) abajo = false;
+                fab.classList.toggle('abajo', abajo);
+                if (abajo) fab.classList.remove('abierto');
+                btnMas.setAttribute('aria-label', abajo ? 'Volver arriba' : 'Acciones');
+            }, { passive: true });
+
+            document.getElementById('fabTema').addEventListener('click', () => {
+                haptic('light');
+                const btn = document.getElementById('themeToggle');
+                if (btn) btn.click();
+            });
+            const pasosLetra = [15, 17, 19];
+            let pasoLetra = 0;
+            const btnLetra = document.getElementById('fabLetra');
+            btnLetra.addEventListener('click', () => {
+                haptic('light');
+                pasoLetra = (pasoLetra + 1) % pasosLetra.length;
+                document.documentElement.style.setProperty('--font-size-base', pasosLetra[pasoLetra] + 'px');
+                document.documentElement.style.setProperty('--base', pasosLetra[pasoLetra] + 'px');
+                btnLetra.classList.toggle('activo', pasoLetra > 0);
+            });
+
+            // ── Foto de quien lee. Telegram solo la entrega si el usuario la tiene
+            //    publica; si no llega o falla, quedan sus iniciales. ──
+            const usr = tg && tg.initDataUnsafe ? tg.initDataUnsafe.user : null;
+            if (usr) {
+                const ini = document.getElementById('inicial');
+                ini.textContent = (((usr.first_name||'?')[0]||'') + ((usr.last_name||'')[0]||'')).toUpperCase();
+                if (usr.photo_url) {
+                    const im = document.getElementById('avatar');
+                    im.onload  = () => { im.hidden = false; ini.hidden = true; };
+                    im.onerror = () => { im.hidden = true;  ini.hidden = false; };
+                    im.src = usr.photo_url;
+                }
+            }
+
+            // ── Cada opcion y la bibliografia dan un golpe de seleccion ──
+            document.querySelectorAll('details.opc > summary').forEach(el => {
+                el.addEventListener('click', () => {
+                    if (tg && tg.HapticFeedback) tg.HapticFeedback.selectionChanged();
+                });
+            });
 
             // ── Lightbox con zoom, arrastre y descarga ──
             const lb = document.getElementById('lightbox');
@@ -1144,6 +1438,17 @@
             document.getElementById('lbDownload').addEventListener('click', async () => {
                 haptic('medium');
                 let nombre = (srcUrl.split('/').pop() || 'acamedics.jpg').split('?')[0];
+                try { nombre = decodeURIComponent(nombre); } catch (e) {}
+
+                // Dentro de Telegram, <a download> no descarga nada: el WebView lo
+                // ignora y se limita a abrir la imagen. downloadFile es la unica via
+                // que guarda el archivo de verdad (Bot API 8.0 en adelante).
+                if (tg && typeof tg.downloadFile === 'function' &&
+                    tg.isVersionAtLeast && tg.isVersionAtLeast('8.0')) {
+                    try { tg.downloadFile({ url: srcUrl, file_name: nombre }); return; }
+                    catch (e) { /* si falla, sigue por los respaldos de abajo */ }
+                }
+
                 // El bot sube sin content-type, asi que Supabase las marca text/plain:
                 // se corrige el tipo aqui segun la extension para que el archivo baje bien.
                 const ext = (nombre.split('.').pop() || 'jpg').toLowerCase();
@@ -1159,7 +1464,11 @@
                     document.body.appendChild(a); a.click(); a.remove();
                     setTimeout(() => URL.revokeObjectURL(url), 4000);
                 } catch (e) {
-                    window.open(srcUrl, '_blank');   // respaldo: abrir en pestaña nueva
+                    // Ultimo respaldo: abrirla en el navegador del telefono, donde el
+                    // usuario si puede guardarla. Dentro de Telegram, window.open solo
+                    // la mostraria otra vez en el mismo visor.
+                    if (tg && typeof tg.openLink === 'function') tg.openLink(srcUrl);
+                    else window.open(srcUrl, '_blank');
                 }
             });
 
