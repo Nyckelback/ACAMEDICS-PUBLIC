@@ -665,11 +665,10 @@
         .header-case{display:none}
         .ctrl-btns{display:none !important}
         /* Solo aparece dentro de Telegram: fuera no hay usuario que mostrar. */
-        .lector{display:flex;align-items:center;gap:8px}
-        .quien-nom{font-family:var(--ft);font-size:13.5px;font-weight:600;
-          color:var(--text);max-width:110px;white-space:nowrap;
-          overflow:hidden;text-overflow:ellipsis}
-        .quien{width:34px;height:34px;border-radius:10px;overflow:hidden;flex-shrink:0;
+        /* Redondo, como los avatares de Telegram: cuadrado desentonaba al lado
+           de la propia interfaz de la app. Es la unica excepcion a los
+           cuadraditos, igual que el boton +. */
+        .quien{width:34px;height:34px;border-radius:50%;overflow:hidden;flex-shrink:0;
           border:1px solid var(--border);
           background:color-mix(in srgb,var(--primary) 10%,transparent);
           display:flex;align-items:center;justify-content:center}
@@ -1056,11 +1055,10 @@
             html += '</div>';
             // Los controles viven en la barra superior, no al lado del titulo:
             // asi el titulo queda solo, a todo el ancho, y la cabecera se lee de un golpe.
-            html += '<div class="lector" id="lector" hidden>'
-                 +    '<span class="quien"><img id="avatar" alt="" hidden>'
-                 +      '<span class="quien-ini" id="inicial"></span></span>'
-                 +    '<span class="quien-nom" id="nombre"></span>'
-                 +  '</div>';
+            html += '<span class="quien" id="lector" hidden>'
+                 +    '<img id="avatar" alt="" hidden>'
+                 +    '<span class="quien-ini" id="inicial"></span>'
+                 +  '</span>';
             html += '<div class="ctrl-btns">';
             html += '<button class="font-btn" id="fontCycle" title="Tamaño de letra"><svg viewBox="0 0 256 256" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M87.24,52.59a8,8,0,0,0-14.48,0l-64,136a8,8,0,1,0,14.48,6.81L39.9,160h80.2l16.66,35.4a8,8,0,1,0,14.48-6.81ZM47.43,144,80,74.79,112.57,144ZM200,96c-12.76,0-22.73,3.47-29.63,10.32a8,8,0,0,0,11.26,11.36c3.8-3.77,10-5.68,18.37-5.68,13.23,0,24,9,24,20v3.22A42.76,42.76,0,0,0,200,128c-22.06,0-40,16.15-40,36s17.94,36,40,36a42.73,42.73,0,0,0,24-7.25,8,8,0,0,0,16-.75V132C240,112.15,222.06,96,200,96Zm0,88c-13.23,0-24-9-24-20s10.77-20,24-20,24,9,24,20S213.23,184,200,184Z"/></svg></button>';
             html += '<button class="theme-btn" id="themeToggle" title="Cambiar tema">';
@@ -1414,9 +1412,7 @@
             if (usr) {
                 const cont = document.getElementById('lector');
                 const ini  = document.getElementById('inicial');
-                const nom  = document.getElementById('nombre');
                 cont.hidden = false;
-                nom.textContent = usr.first_name || '';
                 ini.textContent = (((usr.first_name||'?')[0]||'') + ((usr.last_name||'')[0]||'')).toUpperCase();
                 if (usr.photo_url) {
                     const im = document.getElementById('avatar');
