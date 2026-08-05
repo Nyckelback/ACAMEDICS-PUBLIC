@@ -701,8 +701,10 @@
         /* ── Tarjeta de opcion ── */
         .opc{background:var(--bg);border:1px solid var(--border);border-radius:16px;
           margin-bottom:10px;padding:16px}
-        .opc-cab{display:flex;align-items:flex-start;gap:11px;margin-bottom:10px}
-        .opc-cab .fila-n{padding-top:3px;flex:1;font-family:var(--ft);font-size:16px;
+         /* Los tres elementos comparten eje: con titulos de dos lineas, tener la
+           letra y la X ancladas arriba dejaba el texto colgando. */
+        .opc-cab{display:flex;align-items:center;gap:11px;margin-bottom:10px}
+        .opc-cab .fila-n{flex:1;font-family:var(--ft);font-size:16px;
           font-weight:600;letter-spacing:-0.01em;color:var(--text)}
         .fila-ico{width:30px;height:30px;border-radius:11px;flex-shrink:0;
           display:flex;align-items:center;justify-content:center;
@@ -711,11 +713,11 @@
           color:var(--primary)}
         .fila-ico.ok svg{width:17px;height:17px}
         .fila-ico.no{background:var(--border);color:var(--text-body)}
-        .opc-est{width:26px;height:26px;border-radius:8px;flex-shrink:0;margin-top:2px;
+        .opc-est{width:26px;height:26px;border-radius:8px;flex-shrink:0;
           background:color-mix(in srgb,var(--accent) 12%,transparent);color:var(--accent);
           display:flex;align-items:center;justify-content:center}
         .opc-est svg{width:14px;height:14px}
-        .ok-est{width:auto;height:auto;background:none;border-radius:0;margin-top:3px;
+        .ok-est{width:auto;height:auto;background:none;border-radius:0;
           font-family:var(--ft);font-size:12.5px;font-weight:700;color:var(--primary)}
         .opc>p{font-size:calc(var(--base) - 1.5px);color:var(--text-body);line-height:1.6}
         .opc>p+p{margin-top:13px}
@@ -725,7 +727,7 @@
         .opc summary::-webkit-details-marker{display:none}
         .opc[open] summary{margin-bottom:10px}
         .opc-flecha{width:17px;height:17px;color:var(--text-muted);flex-shrink:0;
-          margin-top:6px;transition:transform .2s ease}
+          transition:transform .2s ease}
         .opc[open] .opc-flecha{transform:rotate(180deg)}
 
         /* ── TIP: burbuja con su gradiente teal→magenta ── */
@@ -1194,7 +1196,11 @@
                             //      del orden en que vengan los descartes
                             //   2. "**B. Nombre**" al abrir el parrafo (formato anterior)
                             //   3. el orden de la lista de opciones (ultimo recurso)
-                            const mParen = t.match(/\(\s*opci[oó]n\s+([A-F])\s*\)/i);
+                            // Se acepta "(opcion B)" y tambien "la opcion B" suelta:
+                            // varios casos ya publicados usan la segunda, y adaptar
+                            // el lector es preferible a reescribir texto clinico.
+                            const mParen = t.match(/\(\s*opci[oó]n\s+([A-F])\s*\)/i)
+                                        || t.match(/\bla\s+opci[oó]n\s+([A-F])\b/i);
                             const mAbre  = t.match(/^\*\*\s*([A-F])[.)]\s*([^*]+?)\s*\*\*/);
                             let letra, nombre, texto = t;
                             if (mParen) {
@@ -1202,6 +1208,7 @@
                                 const op = ops.find(x => (x.letter||'').toUpperCase() === letra);
                                 nombre = op ? (op.text||'') : '';
                                 // el "(opcion A)" era para mi, no para quien lee
+                                // si la marca era "la opcion B", se quita entera
                                 texto = t.replace(mParen[0], '').replace(/\s{2,}/g, ' ')
                                          .replace(/\s+([,.;:])/g, '$1').trim();
                             } else if (mAbre) {
