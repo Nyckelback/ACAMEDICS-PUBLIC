@@ -1179,11 +1179,15 @@ async def cola_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     if query.data.startswith("cola_preview_"):
         entry_id = query.data.replace("cola_preview_", "")
-        await query.answer("⏳ Cargando preview...")
+        # OJO: no responder aqui. Telegram admite UNA sola respuesta por callback;
+        # si se contesta antes, cualquier error posterior se descarta en silencio y
+        # el boton se queda en "Cargando preview..." para siempre.
 
         try:
             # Get the scheduled entry to get case_id
-            entry = supabase.client.table("scheduled_posts").select("case_id").eq("id", entry_id).execute()
+            # Lectura de servidor: scheduled_posts tiene RLS y ninguna politica para anon,
+            # asi que con la llave publica esto devolvia 0 filas siempre (el bot es admin).
+            entry = supabase.service_client.table("scheduled_posts").select("case_id").eq("id", entry_id).execute()
 
             if entry.data:
                 case_uuid = entry.data[0]["case_id"]
@@ -1195,6 +1199,7 @@ async def cola_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 ])
 
                 await query.edit_message_reply_markup(reply_markup=keyboard)
+                await query.answer("✅ Preview listo")
             else:
                 await query.answer("❌ No se encontró el caso", show_alert=True)
 
