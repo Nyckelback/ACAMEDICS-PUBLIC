@@ -57,7 +57,8 @@ class SupabaseClient:
     def get_case(self, case_uuid: str) -> Optional[Dict[str, Any]]:
         """Retrieve a case from the database."""
         try:
-            response = self.client.table("cases").select("*").eq("id", case_uuid).execute()
+            # Servidor: con la llave publica RLS oculta los casos sin publicar.
+            response = self.service_client.table("cases").select("*").eq("id", case_uuid).execute()
             if response.data and len(response.data) > 0:
                 return response.data[0]
             logger.warning(f"Case not found: {case_uuid}")
@@ -113,7 +114,7 @@ class SupabaseClient:
     def get_next_case_number(self) -> int:
         """Get the next case number for display."""
         try:
-            response = self.client.table("cases").select("id", count="exact").execute()
+            response = self.service_client.table("cases").select("id", count="exact").execute()
             if response.count is not None:
                 return response.count + 1
             return 1
