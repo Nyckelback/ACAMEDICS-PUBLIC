@@ -1021,7 +1021,19 @@
                 const h = { 'apikey': ak, 'Content-Type': 'application/json' };
                 const cr = await fetch(base+'/cases?id=eq.'+caseId+'&select=*', {headers:h});
                 if (!cr.ok) throw new Error('fetch error');
-                const cases = await cr.json();
+                let cases = await cr.json();
+                if (!cases.length) {
+                    // Caso AUN NO PUBLICADO: la politica RLS no deja leerlo con la llave
+                    // publica. Se pide por RPC, que exige el UUID exacto del caso; por eso
+                    // no permite listar borradores ni descubrirlos. Sin el link, nada.
+                    try {
+                        const pr = await fetch(base+'/rpc/get_case_preview', {
+                            method: 'POST', headers: h,
+                            body: JSON.stringify({ p_id: caseId })
+                        });
+                        if (pr.ok) cases = await pr.json();
+                    } catch(e) { /* sin preview disponible: cae al mensaje de abajo */ }
+                }
                 if (!cases.length) { showError('Caso clínico no encontrado'); return; }
                 renderCase(cases[0]);
             } catch(e) { console.error(e); showError('Error cargando el caso clínico'); }
