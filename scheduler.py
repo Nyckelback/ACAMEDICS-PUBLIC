@@ -15,6 +15,7 @@ from datetime import datetime
 import pytz
 
 from config import Config
+from case_images import send_case_images
 
 logger = logging.getLogger(__name__)
 
@@ -174,6 +175,8 @@ async def _publish_single(post: dict):
                 text=vignette,
             )
             poll_question = "¿Cuál es la respuesta correcta?"
+
+        await send_case_images(bot, Config.PUBLIC_CHANNEL_ID, case_id)
 
         option_texts = []
         for opt in options:

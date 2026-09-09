@@ -36,6 +36,7 @@ from telegram.error import TelegramError
 from telegram.constants import ChatAction
 
 from config import Config
+from case_images import send_case_images
 from case_parser import parse_case, validate_case
 from supabase_client import init_supabase
 from justification_messages import get_random_message
@@ -1857,6 +1858,8 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             )
             poll_question = "¿Cuál es la respuesta correcta?"
 
+        await send_case_images(context.bot, Config.PUBLIC_CHANNEL_ID, case_uuid)
+
         option_texts = []
         for opt in options:
             full = f"{opt['letter']}. {opt['text']}"
@@ -2045,6 +2048,8 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             poll_question = "¿Cuál es la respuesta correcta?"
 
         # Prepare option texts
+        await send_case_images(context.bot, Config.PUBLIC_CHANNEL_ID, case_uuid)
+
         option_texts = []
         for opt in options:
             full = f"{opt['letter']}. {opt['text']}"

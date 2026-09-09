@@ -1035,6 +1035,13 @@
                     } catch(e) { /* sin preview disponible: cae al mensaje de abajo */ }
                 }
                 if (!cases.length) { showError('Caso clínico no encontrado'); return; }
+                try {
+                    const mediaResponse = await fetch('./case_images.json');
+                    if (mediaResponse.ok) {
+                        const media = await mediaResponse.json();
+                        cases[0].vignette_images = media[caseId] || [];
+                    }
+                } catch (e) { console.warn('No se pudo cargar la atribución de imágenes', e); }
                 renderCase(cases[0]);
             } catch(e) { console.error(e); showError('Error cargando el caso clínico'); }
         }
@@ -1097,16 +1104,21 @@
             // ── BLOQUE DE REVISION (solo mientras el caso NO esta publicado) ──
             // Deja ver la viñeta y las opciones para verificar el caso completo
             // antes de mandarlo al canal. Al publicarse desaparece solo.
-            if (d.published === false && (d.vignette || (d.options || []).length)) {
+            const vignetteImages = d.vignette_images || [];
+            if ((d.published === false || vignetteImages.length) && (d.vignette || (d.options || []).length)) {
                 html += '<div class="revision">';
-                html += '<div class="revision-tag">Vista previa · solo tú ves esto</div>';
+                if (d.published === false) html += '<div class="revision-tag">Vista previa · solo tú ves esto</div>';
                 if (d.vignette) {
                     const vparas = String(d.vignette).split(/\n\s*\n/).filter(p => p.trim());
                     html += '<div class="revision-vineta">';
                     vparas.forEach(p => { html += '<p>' + mdBold(esc(p.trim())) + '</p>'; });
                     html += '</div>';
                 }
-                const ops = Array.isArray(d.options) ? d.options : [];
+                vignetteImages.forEach(a => {
+                    html += '<figure style="margin:16px 0"><img style="max-width:100%;height:auto" src="'+esc(a.url)+'" alt="Fotografía clínica ilustrativa de otro paciente" data-full="'+esc(a.url)+'">';
+                    html += '<figcaption style="font-size:12px;line-height:1.5">'+esc(a.credit)+'<br><a href="'+esc(a.source)+'" target="_blank" rel="noopener">Fuente</a> · <a href="'+esc(a.license)+'" target="_blank" rel="noopener">'+esc(a.license_label)+'</a></figcaption></figure>';
+                });
+                const ops = d.published === false && Array.isArray(d.options) ? d.options : [];
                 if (ops.length) {
                     html += '<ul class="revision-ops">';
                     ops.forEach(o => {
@@ -1192,7 +1204,11 @@
                     // ── MODO TARJETAS ──
                     html += '</div></div>';   // cierra el bloque de texto corrido
 
-                    const ops = Array.isArray(d.options) ? d.options : [];
+                    vignetteImages.forEach(a => {
+                    html += '<figure style="margin:16px 0"><img style="max-width:100%;height:auto" src="'+esc(a.url)+'" alt="Fotografía clínica ilustrativa de otro paciente" data-full="'+esc(a.url)+'">';
+                    html += '<figcaption style="font-size:12px;line-height:1.5">'+esc(a.credit)+'<br><a href="'+esc(a.source)+'" target="_blank" rel="noopener">Fuente</a> · <a href="'+esc(a.license)+'" target="_blank" rel="noopener">'+esc(a.license_label)+'</a></figcaption></figure>';
+                });
+                const ops = d.published === false && Array.isArray(d.options) ? d.options : [];
                     const letraOk = (d.correct_letter || '').toUpperCase();
 
                     // La correcta: todo lo anterior al corte, en una sola tarjeta
@@ -1270,7 +1286,7 @@
             }
 
             // ── IMAGES ACCORDION ──
-            const caseImages = Array.isArray(d.images) ? d.images : [];
+            const caseImages = (Array.isArray(d.images) ? d.images : []).filter(url => !vignetteImages.some(a => a.url === url));
             if (caseImages.length) {
                 html += '<div class="img-accordion open" id="imgAccordion">';
                 html += '<button class="img-toggle" id="imgToggle">';
