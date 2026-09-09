@@ -1204,11 +1204,7 @@
                     // ── MODO TARJETAS ──
                     html += '</div></div>';   // cierra el bloque de texto corrido
 
-                    vignetteImages.forEach(a => {
-                    html += '<figure style="margin:16px 0"><img style="max-width:100%;height:auto" src="'+esc(a.url)+'" alt="Fotografía clínica ilustrativa de otro paciente" data-full="'+esc(a.url)+'">';
-                    html += '<figcaption style="font-size:12px;line-height:1.5">'+esc(a.credit)+'<br><a href="'+esc(a.source)+'" target="_blank" rel="noopener">Fuente</a> · <a href="'+esc(a.license)+'" target="_blank" rel="noopener">'+esc(a.license_label)+'</a></figcaption></figure>';
-                });
-                const ops = d.published === false && Array.isArray(d.options) ? d.options : [];
+                    const ops = Array.isArray(d.options) ? d.options : [];
                     const letraOk = (d.correct_letter || '').toUpperCase();
 
                     // La correcta: todo lo anterior al corte, en una sola tarjeta
