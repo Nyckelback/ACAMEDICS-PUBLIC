@@ -143,9 +143,19 @@ class FakeSupabase:
     def __init__(self):
         self.t, self.caida, self.sin_columna = {}, False, False
         self.service_client = self
+        self.rpcs, self.rpc_falla = [], False
 
     def table(self, nombre):
         return Q(self, nombre)
+
+    def rpc(self, nombre, params):
+        if self.rpc_falla:
+            raise Exception("transición no permitida: descartado → publicado")
+        self.rpcs.append((nombre, params))
+        for r in self.t.get("registro_casos", []):
+            if r["case_key"] == params.get("p_key"):
+                r["estado"] = params.get("p_a")
+        return Q(self, "_nada")
 
 
 def op(db, tipo, case_id=None, payload=None, oid="op1"):
@@ -183,6 +193,23 @@ async def main():
         canal_ops.registrar_mensajes(db, "c1", v, imgs, p); chk(True, "")
     except Exception as e:
         chk(False, f"registrar_mensajes no debe lanzar si falta la columna: {e}")
+
+    # 1b. al publicar, el registro central queda en «publicado»; si ya lo estaba, no se toca; si falla, no rompe
+    bot, db = FakeBot(), FakeSupabase()
+    db.t["cases"] = [{"id": "c1", "vignette": LARGA}]
+    db.t["registro_casos"] = [{"case_key": "ACM-AAAAAA", "estado": "en_cola", "supabase_case_id": "c1"}]
+    v, imgs, p = await publicar_simulado(bot, LARGA)
+    canal_ops.registrar_mensajes(db, "c1", v, imgs, p)
+    chk(db.t["registro_casos"][0]["estado"] == "publicado" and db.rpcs[-1][0] == "registro_transicion",
+        f"el bot marca publicado en el registro: {db.rpcs}")
+    n_rpc = len(db.rpcs)
+    canal_ops.registrar_mensajes(db, "c1", v, imgs, p)
+    chk(len(db.rpcs) == n_rpc, "si ya está publicado no se vuelve a pedir la transición")
+    db.t["registro_casos"][0]["estado"] = "descartado"; db.rpc_falla = True
+    try:
+        canal_ops.registrar_mensajes(db, "c1", v, imgs, p); chk(True, "")
+    except Exception as e:
+        chk(False, f"una transición rechazada no debe romper la publicación: {e}")
 
     # 2. probar: envía, edita y borra en el chat del admin; reporta permisos; no deja rastro
     bot, db = FakeBot(), FakeSupabase()

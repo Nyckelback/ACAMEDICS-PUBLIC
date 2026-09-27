@@ -60,6 +60,22 @@ def registrar_mensajes(supabase, case_id, vineta_msg, imagen_ids, poll_msg):
         ).eq("id", case_id).execute()
     except Exception as e:  # nunca romper la publicación por esto
         logger.warning(f"No se pudieron registrar los ids de mensajes del caso {case_id}: {e}")
+    marcar_publicado_en_registro(supabase, case_id)
+
+
+def marcar_publicado_en_registro(supabase, case_id):
+    """El registro central (compartido por todas las máquinas) se entera de la publicación al
+    instante, sin depender de qué máquina la programó. Protegido: nunca afecta la publicación."""
+    try:
+        sc = supabase.service_client
+        r = sc.table("registro_casos").select("case_key,estado").eq("supabase_case_id", case_id).limit(1).execute()
+        if not r.data or r.data[0]["estado"] == "publicado":
+            return
+        sc.rpc("registro_transicion", {"p_key": r.data[0]["case_key"], "p_a": "publicado",
+                                       "p_por_que": "publicado por el bot", "p_quien": "bot",
+                                       "p_maquina": "render"}).execute()
+    except Exception as e:
+        logger.warning(f"registro central: no se marcó publicado el caso {case_id}: {e}")
 
 
 # ─────────────────────────── cola de operaciones ───────────────────────────
