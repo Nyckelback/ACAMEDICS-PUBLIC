@@ -37,6 +37,7 @@ from telegram.constants import ChatAction
 
 from config import Config
 from case_images import send_case_images
+import canal_ops
 from case_parser import parse_case, validate_case
 from supabase_client import init_supabase
 from justification_messages import get_random_message
@@ -1851,14 +1852,15 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
         vignette = pending_case["vignette"]
         options = pending_case["options"]
         poll_question = vignette
+        vineta_msg = None
         if len(vignette) > 290:
-            await context.bot.send_message(
+            vineta_msg = await context.bot.send_message(
                 chat_id=Config.PUBLIC_CHANNEL_ID,
                 text=vignette,
             )
             poll_question = "¿Cuál es la respuesta correcta?"
 
-        await send_case_images(context.bot, Config.PUBLIC_CHANNEL_ID, case_uuid)
+        imagen_ids = await send_case_images(context.bot, Config.PUBLIC_CHANNEL_ID, case_uuid)
 
         option_texts = []
         for opt in options:
@@ -1904,6 +1906,7 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             case_uuid,
             {"telegram_message_id": poll_msg.message_id, "published": True, "published_at": datetime.now(pytz.timezone(Config.TZ)).isoformat(), "display_number": case_display_num(case_uuid)},
         )
+        canal_ops.registrar_mensajes(supabase, case_uuid, vineta_msg, imagen_ids, poll_msg)
 
         # Edit the original message to show confirmation (no new message)
         try:
@@ -2038,9 +2041,10 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         # If vignette is too long for poll question (300 char limit), send it as text first
         poll_question = vignette
+        vineta_msg = None
         if len(vignette) > 290:
             # Send vignette as separate message
-            await context.bot.send_message(
+            vineta_msg = await context.bot.send_message(
                 chat_id=Config.PUBLIC_CHANNEL_ID,
                 text=vignette,
             )
@@ -2048,7 +2052,7 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             poll_question = "¿Cuál es la respuesta correcta?"
 
         # Prepare option texts
-        await send_case_images(context.bot, Config.PUBLIC_CHANNEL_ID, case_uuid)
+        imagen_ids = await send_case_images(context.bot, Config.PUBLIC_CHANNEL_ID, case_uuid)
 
         option_texts = []
         for opt in options:
@@ -2104,6 +2108,7 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 "display_number": case_display_num(case_uuid),
             },
         )
+        canal_ops.registrar_mensajes(supabase, case_uuid, vineta_msg, imagen_ids, poll_msg)
 
         # Confirm to admin
         await update.message.reply_text(

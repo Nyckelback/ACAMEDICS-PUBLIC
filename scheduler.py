@@ -16,6 +16,7 @@ import pytz
 
 from config import Config
 from case_images import send_case_images
+import canal_ops
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,7 @@ async def scheduler_loop():
         try:
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
             await _check_and_publish()
+            await _procesar_ops()
         except asyncio.CancelledError:
             logger.info("Scheduler loop cancelled")
             break
@@ -113,6 +115,18 @@ async def scheduler_loop():
             logger.error(f"Scheduler loop error: {e}", exc_info=True)
             # Don't crash the loop on errors
             await asyncio.sleep(10)
+
+
+async def _procesar_ops():
+    """Operaciones sobre el canal pedidas desde otras máquinas (tabla telegram_ops).
+    Va DESPUÉS de publicar lo programado y nunca puede tumbar el ciclo."""
+    if not _supabase or not _bot_app:
+        return
+    try:
+        async with _publish_lock:
+            await canal_ops.procesar_ops(_bot_app.bot, _supabase)
+    except Exception as e:
+        logger.error(f"canal_ops: {e}", exc_info=True)
 
 
 async def _check_and_publish():
@@ -169,14 +183,15 @@ async def _publish_single(post: dict):
         options = case_data.get("options", [])
 
         poll_question = vignette
+        vineta_msg = None
         if len(vignette) > 290:
-            await bot.send_message(
+            vineta_msg = await bot.send_message(
                 chat_id=Config.PUBLIC_CHANNEL_ID,
                 text=vignette,
             )
             poll_question = "¿Cuál es la respuesta correcta?"
 
-        await send_case_images(bot, Config.PUBLIC_CHANNEL_ID, case_id)
+        imagen_ids = await send_case_images(bot, Config.PUBLIC_CHANNEL_ID, case_id)
 
         option_texts = []
         for opt in options:
@@ -231,6 +246,7 @@ async def _publish_single(post: dict):
             "published": True,
             "display_number": case_display_num(case_id),
         })
+        canal_ops.registrar_mensajes(_supabase, case_id, vineta_msg, imagen_ids, poll_msg)
 
         # Mark schedule entry as done
         _supabase.mark_done(entry_id, poll_msg.message_id)
