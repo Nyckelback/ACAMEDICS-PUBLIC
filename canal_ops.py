@@ -24,6 +24,8 @@ Reglas de seguridad:
 import logging
 import re
 import unicodedata
+
+from lab_table import vineta_telegram
 from datetime import datetime, timezone
 
 from config import Config
@@ -247,7 +249,8 @@ async def _editar_vineta(bot, sc, op):
         raise OpFallida("no se encontró con certeza el mensaje de la viñeta; no se editó nada",
                         {"verificacion": detalle})
     try:
-        await bot.edit_message_text(chat_id=canal, message_id=vid, text=nuevo)
+        texto_vineta, modo_vineta = vineta_telegram(nuevo)
+        await bot.edit_message_text(chat_id=canal, message_id=vid, text=texto_vineta, parse_mode=modo_vineta)
         estado = "editada"
     except Exception as e:
         if "not modified" in str(e).lower():

@@ -7,7 +7,7 @@
     <title>ACAMEDICS — Justificación</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600;700&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Nunito+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@300;400;500;600;700&family=Source+Sans+3:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500&family=Nunito+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         @font-face { font-family: 'Neue Kabel'; src: local('Neue Kabel'), local('ITC Kabel'); }
@@ -230,6 +230,16 @@
         }
         .revision-vineta p { margin-bottom: 10px; }
         .revision-vineta p:last-child { margin-bottom: 0; }
+        /* Laboratorios de la viñeta en tabla (Parámetro | Resultado). Misma regla que
+           ACAMEDICS-LAB/code/labs_tabla.py y la web (labsTabla.ts). */
+        /* Como los bancos de referencia: dos columnas sin líneas, renglones a la altura del texto,
+           títulos de grupo en su renglón y parámetros sangrados; si es largo, dos tablas lado a lado. */
+        .labs { display: flex; flex-wrap: wrap; column-gap: 28px; row-gap: 8px; margin: 2px 0 12px; font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, Menlo, monospace; font-size: 0.88em; line-height: 1.4; }
+        .lab-tabla { display: grid; grid-template-columns: max-content max-content; column-gap: 16px; row-gap: 0; align-content: start; }
+        .labs .lab-g { padding-left: 12px; }
+        .labs .lab-v { font-variant-numeric: tabular-nums; }
+        .labs .lab-t { grid-column: 1 / -1; font-weight: 700; padding-top: 5px; }
+        .labs .lab-t:first-child { padding-top: 0; }
         .revision-ops { list-style: none; margin: 14px 0 0; padding: 0; }
         .revision-ops li {
             display: flex; align-items: flex-start; gap: 9px;
@@ -989,6 +999,100 @@
         }
 
         function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+        // ── Laboratorios de la viñeta → tabla. Copia de ACAMEDICS-LAB/code/labs_tabla.py ──
+        // (casos de prueba compartidos: labs_tabla_casos.json). El caso se sigue escribiendo
+        // con un parámetro por renglón; aquí solo se pinta distinto.
+        const LAB_CUALI = new Set(['negativo','negativa','negativos','negativas','positivo','positiva','positivos','positivas','normal','normales','presente','presentes','ausente','ausentes','trazas','indetectable','escasos','escasas','numerosos','numerosas','abundantes','raros','raras','reactivo','reactiva','nitritos','claro','clara','turbio','turbia','amarillo','ámbar','detectable','indetectables']);
+        const LAB_VINETA = /^[-–—•·▪*✓✗✔✘⚠→>#|]/;
+        const labPalabras = s => s.split(/\s+/).filter(Boolean).length;
+        function labEsValor(tok) {
+            const t = tok.replace(/^[(),;:]+|[(),;:]+$/g, '').toLowerCase();
+            return /^[<>≤≥~±]?[+\-−]?\d/.test(tok) || /^\++$/.test(tok) || LAB_CUALI.has(t);
+        }
+        function labFila(linea) {
+            const s = linea.replace(/\s+$/, '');
+            if (!s || s.length > 80 || s.endsWith('.') || labPalabras(s) > 9 || LAB_VINETA.test(s.trimStart())) return null;
+            const toks = []; for (const m of s.matchAll(/\S+/g)) toks.push([m.index, m.index + m[0].length]);
+            for (let i = 1; i < toks.length; i++) {
+                if (labEsValor(s.slice(toks[i][0], toks[i][1]))) {
+                    const et = [toks[0][0], toks[i - 1][1]];
+                    if (!/[^\W\d_]/u.test(s.slice(et[0], et[1]))) return null;
+                    return [et, [toks[i][0], s.length]];
+                }
+            }
+            return null;
+        }
+        function labTitulo(linea) {
+            const s = linea.trim();
+            if (!s || LAB_VINETA.test(s) || s.length > 40 || /\d/.test(s) || s.endsWith('.') || labPalabras(s) > 5) return false;
+            return /[^\W\d_]/u.test(s);
+        }
+        function labPartes(texto) {
+            const t = texto || '', lineas = []; let pos = 0;
+            for (const c of t.split('\n')) { lineas.push([pos, pos + c.length, c]); pos += c.length + 1; }
+            const clase = lineas.map(([, , s]) => !s.trim() ? 'blanco' : labFila(s) ? 'fila' : labTitulo(s) ? 'titulo' : 'prosa');
+            const tramos = []; let i = 0; const n = lineas.length;
+            while (i < n) {
+                if (clase[i] === 'fila' || clase[i] === 'titulo') {
+                    let j = i; while (j < n && (clase[j] === 'fila' || clase[j] === 'titulo')) j++;
+                    let k = j; while (k > i && clase[k - 1] === 'titulo') k--;
+                    if (clase.slice(i, k).includes('fila')) tramos.push([i, k]);
+                    i = Math.max(j, i + 1);
+                } else i++;
+            }
+            const grupos = [];
+            for (const tr of tramos) {
+                const ult = grupos[grupos.length - 1];
+                if (ult && clase.slice(ult[ult.length - 1][1], tr[0]).every(c => c === 'blanco')) ult.push(tr); else grupos.push([tr]);
+            }
+            const validos = [];
+            for (const g of grupos) { let f = 0; for (const [a, b] of g) for (let x = a; x < b; x++) if (clase[x] === 'fila') f++; if (f >= 3) validos.push(...g); }
+            const out = []; let cursor = 0;
+            for (const [a, b] of validos) {
+                const ini = lineas[a][0], fin = lineas[b - 1][1];
+                if (ini > cursor) out.push({ tipo: 'texto', ini: cursor, fin: ini });
+                const filas = [];
+                for (let x = a; x < b; x++) {
+                    const [li, lf, s] = lineas[x];
+                    if (clase[x] === 'fila') { const [[ea, eb], [va, vb]] = labFila(s); filas.push({ tipo: 'fila', etiqueta: [li + ea, li + eb], valor: [li + va, li + vb] }); }
+                    else { const ta = li + (s.length - s.trimStart().length); filas.push({ tipo: 'titulo', texto: [ta, li + s.replace(/\s+$/, '').length] }); }
+                }
+                out.push({ tipo: 'tabla', ini, fin, filas }); cursor = fin;
+            }
+            if (cursor < t.length || !out.length) out.push({ tipo: 'texto', ini: cursor, fin: t.length });
+            return out;
+        }
+        function labColumnas(filas) {
+            const n = filas.length;
+            if (filas.filter(f => f.tipo === 'fila').length < 8) return [filas];
+            const tit = []; for (let k = 1; k < n; k++) if (filas[k].tipo === 'titulo' && k >= 0.3 * n && k <= 0.7 * n) tit.push(k);
+            let k;
+            if (tit.length) k = tit.reduce((m, x) => Math.abs(x - n / 2) < Math.abs(m - n / 2) ? x : m);
+            else { k = Math.floor((n + 1) / 2); while (k > 1 && filas[k - 1].tipo === 'titulo') k--; }
+            return [filas.slice(0, k), filas.slice(k)];
+        }
+        /** Viñeta → HTML: párrafos como antes y el bloque de laboratorios como tabla. */
+        function vinetaHtml(texto) {
+            const t = String(texto || ''); let html = '';
+            for (const p of labPartes(t)) {
+                if (p.tipo === 'texto') {
+                    t.slice(p.ini, p.fin).split(/\n\s*\n/).filter(x => x.trim()).forEach(x => { html += '<p>' + mdBold(esc(x.trim())) + '</p>'; });
+                } else {
+                    html += '<div class="labs">'; let enGrupo = false;
+                    labColumnas(p.filas).forEach(col => {
+                        html += '<div class="lab-tabla">';
+                        col.forEach(f => {
+                            if (f.tipo === 'titulo') { enGrupo = true; html += '<span class="lab-t">' + esc(t.slice(f.texto[0], f.texto[1])) + '</span>'; }
+                            else html += '<span class="lab-p' + (enGrupo ? ' lab-g' : '') + '">' + mdBold(esc(t.slice(f.etiqueta[0], f.etiqueta[1]))) + '</span><span class="lab-v">' + mdBold(esc(t.slice(f.valor[0], f.valor[1]))) + '</span>';
+                        });
+                        html += '</div>';
+                    });
+                    html += '</div>';
+                }
+            }
+            return html;
+        }
         function mdBold(s) {
             // Fix misplaced bold markers: letter**rest** → **letter rest**
             // Catches 1-3 letters before ** that should be inside the bold
@@ -1109,10 +1213,7 @@
                 html += '<div class="revision">';
                 if (d.published === false) html += '<div class="revision-tag">Vista previa · solo tú ves esto</div>';
                 if (d.vignette) {
-                    const vparas = String(d.vignette).split(/\n\s*\n/).filter(p => p.trim());
-                    html += '<div class="revision-vineta">';
-                    vparas.forEach(p => { html += '<p>' + mdBold(esc(p.trim())) + '</p>'; });
-                    html += '</div>';
+                    html += '<div class="revision-vineta">' + vinetaHtml(d.vignette) + '</div>';
                 }
                 vignetteImages.forEach(a => {
                     html += '<figure style="margin:16px 0"><img style="max-width:100%;height:auto" src="'+esc(a.url)+'" alt="Fotografía clínica ilustrativa de otro paciente" data-full="'+esc(a.url)+'">';

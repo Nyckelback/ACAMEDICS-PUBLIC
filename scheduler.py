@@ -17,6 +17,7 @@ import pytz
 from config import Config
 from case_images import send_case_images
 import canal_ops
+from lab_table import vineta_telegram
 
 logger = logging.getLogger(__name__)
 
@@ -185,9 +186,11 @@ async def _publish_single(post: dict):
         poll_question = vignette
         vineta_msg = None
         if len(vignette) > 290:
+            texto_vineta, modo_vineta = vineta_telegram(vignette)
             vineta_msg = await bot.send_message(
                 chat_id=Config.PUBLIC_CHANNEL_ID,
-                text=vignette,
+                text=texto_vineta,
+                parse_mode=modo_vineta,
             )
             poll_question = "¿Cuál es la respuesta correcta?"
 
