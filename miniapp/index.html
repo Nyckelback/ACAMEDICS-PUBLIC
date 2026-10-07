@@ -736,6 +736,15 @@
         .opc>p{font-size:calc(var(--base) - 1.5px);color:var(--text-body);line-height:1.6}
         .opc>p+p{margin-top:13px}
         .opc>p b{color:var(--text);font-weight:600}
+        /* Listas dentro de un parrafo ("1." / "-" al inicio de linea): se
+           dibujan como lista y no corridas en una sola linea. */
+        .opc>ol,.opc>ul{font-size:calc(var(--base) - 1.5px);color:var(--text-body);
+          line-height:1.6;margin:8px 0 0;padding-left:22px}
+        .opc>ol li+li,.opc>ul li+li{margin-top:4px}
+        .opc>ol li::marker{font-weight:600;color:var(--text)}
+        .opc>ol b,.opc>ul b{color:var(--text);font-weight:600}
+        .opc>ol+p,.opc>ul+p{margin-top:13px}
+        .justification ol,.justification ul{margin:-14px 0 26px;padding-left:22px}
         .opc summary{cursor:pointer;list-style:none;margin-bottom:0;
           -webkit-tap-highlight-color:transparent}
         .opc summary::-webkit-details-marker{display:none}
@@ -1285,9 +1294,50 @@
                 const esRaya        = t => /^\s*([-*_])\1{2,}\s*$/.test(t);
                 const abreDescarte  = t => /^\*\*\s*[A-F][.)]\s/.test(t);
 
-                const fusion = p => p.split('\n').map(l=>l.trim()).filter(l=>l).join(' ');
+                // Una linea que abre con "1." / "1)" / "-" / "•" es un item de lista.
+                // Con dos o mas items, el parrafo conserva sus saltos (uno por item)
+                // para dibujarlo como lista; lo demas se une como siempre.
+                const esItem = l => /^(\d{1,2}[.)]|[-•])\s+\S/.test(l);
+                const fusion = p => {
+                    const ls = p.split('\n').map(l=>l.trim()).filter(l=>l);
+                    if (ls.filter(esItem).length < 2) return ls.join(' ');
+                    // cada item en su linea; el texto que no es item se une al
+                    // texto anterior que tampoco lo es (antes o despues de la lista)
+                    const out = []; let previoItem = true;
+                    ls.forEach(l => {
+                        const item = esItem(l);
+                        if (item || previoItem) out.push(l); else out[out.length-1] += ' ' + l;
+                        previoItem = item;
+                    });
+                    return out.join('\n');
+                };
                 const cuerpos = paras.map(fusion);
                 const corte = cuerpos.findIndex(t => esTituloOtras(t) || esRaya(t) || abreDescarte(t));
+
+                // Parrafo -> HTML. Sin saltos: un <p> como siempre. Con saltos (ver
+                // fusion): texto en <p> y los items en <ol> o <ul>. La regla de
+                // "solo la primera negrita" se aplica al parrafo entero.
+                function cuerpoHtml(t){
+                    if (!t.includes('\n')) return '<p>'+soloPrimeraNegrita(t)+'</p>';
+                    let h = '', lista = null;
+                    const cerrar = () => { if (lista) { h += '</'+lista+'>'; lista = null; } };
+                    t.split('\n').forEach(l => {
+                        const m = l.match(/^(\d{1,2})[.)]\s+(.*)$/) || l.match(/^([-•])\s+(.*)$/);
+                        if (!m) { cerrar(); h += '<p>'+mdBold(esc(l))+'</p>'; return; }
+                        const tipo = /\d/.test(m[1]) ? 'ol' : 'ul';
+                        if (lista !== tipo) {
+                            cerrar(); lista = tipo;
+                            h += (tipo === 'ol' && m[1] !== '1') ? '<ol start="'+m[1]+'">' : '<'+tipo+'>';
+                        }
+                        h += '<li>'+mdBold(esc(m[2]))+'</li>';
+                    });
+                    cerrar();
+                    let primera = true;
+                    return h.replace(/<b>([\s\S]*?)<\/b>/g, (x, dentro) => {
+                        if (primera) { primera = false; return x; }
+                        return dentro;
+                    });
+                }
 
                 function soloPrimeraNegrita(t){
                     let primera = true;
@@ -1299,7 +1349,7 @@
 
                 if (corte === -1) {
                     // ── MODO CORRIDO ──
-                    cuerpos.forEach(t => { html += '<p>'+soloPrimeraNegrita(t)+'</p>'; });
+                    cuerpos.forEach(t => { html += cuerpoHtml(t); });
                     html += '</div></div>';
                 } else {
                     // ── MODO TARJETAS ──
@@ -1316,7 +1366,7 @@
                          +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
                          +  '</span><span class="fila-n">'+esc('Opción '+letraOk)+'</span>'
                          +  '<span class="ok-est">Correcta</span></div>';
-                    cuerpos.slice(0, corte).forEach(t => { html += '<p>'+soloPrimeraNegrita(t)+'</p>'; });
+                    cuerpos.slice(0, corte).forEach(t => { html += cuerpoHtml(t); });
                     html += '</div>';
 
                     // Los descartes: uno por parrafo, en el orden en que vienen
@@ -1347,8 +1397,8 @@
                                 nombre = op ? (op.text||'') : '';
                                 // el "(opcion A)" era para mi, no para quien lee
                                 // si la marca era "la opcion B", se quita entera
-                                texto = t.replace(mParen[0], '').replace(/\s{2,}/g, ' ')
-                                         .replace(/\s+([,.;:])/g, '$1').trim();
+                                texto = t.replace(mParen[0], '').replace(/[ \t]{2,}/g, ' ')
+                                         .replace(/[ \t]+([,.;:])/g, '$1').replace(/[ \t]+\n/g, '\n').trim();
                             } else if (mAbre) {
                                 letra = mAbre[1]; nombre = mAbre[2];
                                 texto = t.replace(mAbre[0], '').replace(/^[\s.:—–-]+/, '');
@@ -1363,7 +1413,7 @@
                                  +     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
                                  +   '</span>'
                                  +   '<svg class="opc-flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
-                                 +  '</summary><p>'+soloPrimeraNegrita(texto)+'</p></details>';
+                                 +  '</summary>'+cuerpoHtml(texto)+'</details>';
                         });
                     }
                 }
