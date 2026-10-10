@@ -1103,9 +1103,6 @@
             return html;
         }
         function mdBold(s) {
-            // Fix misplaced bold markers: letter**rest** → **letter rest**
-            // Catches 1-3 letters before ** that should be inside the bold
-            s = s.replace(/(^|[\s(,;:])([a-zA-ZáéíóúñüÁÉÍÓÚÑÜ]{1,3})\*\*([^\*]+?)\*\*/g, '$1**$2$3**');
             // Convert **text** to <b>text</b> AFTER esc() so it's safe
             // Also convert *text* (single) to <i>text</i> for italic
             return s
@@ -1315,10 +1312,10 @@
                 const corte = cuerpos.findIndex(t => esTituloOtras(t) || esRaya(t) || abreDescarte(t));
 
                 // Parrafo -> HTML. Sin saltos: un <p> como siempre. Con saltos (ver
-                // fusion): texto en <p> y los items en <ol> o <ul>. La regla de
-                // "solo la primera negrita" se aplica al parrafo entero.
+                // fusion): texto en <p> y los items en <ol> o <ul>, conservando
+                // las negritas selectivas del autor.
                 function cuerpoHtml(t){
-                    if (!t.includes('\n')) return '<p>'+soloPrimeraNegrita(t)+'</p>';
+                    if (!t.includes('\n')) return '<p>'+mdBold(esc(t))+'</p>';
                     let h = '', lista = null;
                     const cerrar = () => { if (lista) { h += '</'+lista+'>'; lista = null; } };
                     t.split('\n').forEach(l => {
@@ -1332,19 +1329,7 @@
                         h += '<li>'+mdBold(esc(m[2]))+'</li>';
                     });
                     cerrar();
-                    let primera = true;
-                    return h.replace(/<b>([\s\S]*?)<\/b>/g, (x, dentro) => {
-                        if (primera) { primera = false; return x; }
-                        return dentro;
-                    });
-                }
-
-                function soloPrimeraNegrita(t){
-                    let primera = true;
-                    return mdBold(esc(t)).replace(/<b>([\s\S]*?)<\/b>/g, (m, dentro) => {
-                        if (primera) { primera = false; return m; }
-                        return dentro;
-                    });
+                    return h;
                 }
 
                 if (corte === -1) {
