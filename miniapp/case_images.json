@@ -21,5 +21,15 @@
         "Crédito de imagen: Jpogi · Wikimedia Commons · CC BY-SA 3.0. Fuente: https://commons.wikimedia.org/w/index.php?title=File:Traumatic_acute_epidual_hematoma.jpg&oldid=508047688 Licencia: https://creativecommons.org/licenses/by-sa/3.0/"
       ]
     }
+  ],
+  "ab08416d-47e9-44f1-93ac-95eb5337408f": [
+    {
+      "url": "https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/0eff57e2-701d-4413-9f32-13663ad98df6_c4790c257323b80374a1dd66b3383109eb34a9d0bc5483eeab6507a38f916eae.jpg",
+      "credit": "Electrocardiograma de 12 derivaciones. Ewingdo. Sin modificaciones.",
+      "source": "https://commons.wikimedia.org/wiki/File:ECG_Atrial_Fibrillation.jpg",
+      "license": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "license_label": "CC BY-SA 4.0",
+      "alt": "Electrocardiograma de 12 derivaciones"
+    }
   ]
 }
