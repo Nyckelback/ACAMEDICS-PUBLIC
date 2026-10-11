@@ -1168,6 +1168,12 @@
             return 1000 + (Math.abs(hash) % 2001); // 1000–3000
         }
 
+        function vignetteText(d) {
+            const omissions = new Set((d.vignette_images || []).flatMap(a => a.vignette_omit || []));
+            const text = String(d.vignette || '');
+            if (!omissions.size) return text;
+            return text.split(/\r?\n/).filter(line => !omissions.has(line.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+        }
         function renderCase(d) {
             d = rescatarContenido(d);
             const phrase = getPhrase();
@@ -1219,10 +1225,10 @@
                 html += '<div class="revision">';
                 if (d.published === false) html += '<div class="revision-tag">Vista previa · solo tú ves esto</div>';
                 if (d.vignette) {
-                    html += '<div class="revision-vineta">' + vinetaHtml(d.vignette) + '</div>';
+                    html += '<div class="revision-vineta">' + vinetaHtml(vignetteText(d)) + '</div>';
                 }
                 vignetteImages.forEach(a => {
-                    html += '<figure style="margin:16px 0"><img style="max-width:100%;height:auto" src="'+esc(a.url)+'" alt="Fotografía clínica ilustrativa de otro paciente" data-full="'+esc(a.url)+'">';
+                    html += '<figure style="margin:16px 0"><img style="max-width:100%;height:auto" src="'+esc(a.url)+'" alt="'+esc(a.alt || 'Imagen clínica')+'" data-full="'+esc(a.url)+'">';
                     html += '<figcaption style="font-size:12px;line-height:1.5">'+esc(a.credit)+'<br><a href="'+esc(a.source)+'" target="_blank" rel="noopener">Fuente</a> · <a href="'+esc(a.license)+'" target="_blank" rel="noopener">'+esc(a.license_label)+'</a></figcaption></figure>';
                 });
                 const ops = d.published === false && Array.isArray(d.options) ? d.options : [];

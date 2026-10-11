@@ -7,5 +7,19 @@
       "license": "https://creativecommons.org/licenses/by/2.0/",
       "license_label": "CC BY 2.0"
     }
+  ],
+  "f6d2c40f-c106-4d02-86bc-5e49128f5a7c": [
+    {
+      "url": "https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/7dad00e6-cf3d-4a1d-a040-fbbaff795ce8_cb49bcc26b5bd329ef2126fedfcb8c9336487dfe9bce205104d14a7dae9ae0b7.jpg",
+      "alt": "TC craneal sin contraste, corte axial",
+      "credit": "Jpogi · Wikimedia Commons · CC BY-SA 3.0. Sin modificaciones.",
+      "source": "https://commons.wikimedia.org/w/index.php?title=File:Traumatic_acute_epidual_hematoma.jpg&oldid=508047688",
+      "license": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "license_label": "CC BY-SA 3.0",
+      "vignette_omit": [
+        "![TC craneal sin contraste, corte axial](https://upload.wikimedia.org/wikipedia/commons/e/e2/Traumatic_acute_epidual_hematoma.jpg#acm-sha256=cb49bcc26b5bd329ef2126fedfcb8c9336487dfe9bce205104d14a7dae9ae0b7)",
+        "Crédito de imagen: Jpogi · Wikimedia Commons · CC BY-SA 3.0. Fuente: https://commons.wikimedia.org/w/index.php?title=File:Traumatic_acute_epidual_hematoma.jpg&oldid=508047688 Licencia: https://creativecommons.org/licenses/by-sa/3.0/"
+      ]
+    }
   ]
 }

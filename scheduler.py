@@ -15,7 +15,7 @@ from datetime import datetime
 import pytz
 
 from config import Config
-from case_images import send_case_images
+from case_images import send_case_images, vignette_text
 import canal_ops
 from lab_table import vineta_telegram
 
@@ -180,7 +180,7 @@ async def _publish_single(post: dict):
         bot = _bot_app.bot
 
         # ── Prepare poll data (same logic as _do_publicar in main.py) ──
-        vignette = case_data["vignette"]
+        vignette = vignette_text(case_id, case_data["vignette"])
         options = case_data.get("options", [])
 
         poll_question = vignette

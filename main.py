@@ -36,7 +36,7 @@ from telegram.error import TelegramError
 from telegram.constants import ChatAction
 
 from config import Config
-from case_images import send_case_images
+from case_images import send_case_images, vignette_text
 import canal_ops
 from lab_table import vineta_telegram
 from case_parser import parse_case, validate_case
@@ -1850,7 +1850,7 @@ async def _do_publicar(query, context: ContextTypes.DEFAULT_TYPE) -> int:
             context.user_data["published"] = False
             return STATE_WAITING_IMAGES
 
-        vignette = pending_case["vignette"]
+        vignette = vignette_text(case_uuid, pending_case["vignette"])
         options = pending_case["options"]
         poll_question = vignette
         vineta_msg = None
@@ -2039,7 +2039,7 @@ async def publicar_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return ConversationHandler.END
 
         # Prepare poll data
-        vignette = pending_case["vignette"]
+        vignette = vignette_text(case_uuid, pending_case["vignette"])
         options = pending_case["options"]
 
         # If vignette is too long for poll question (300 char limit), send it as text first

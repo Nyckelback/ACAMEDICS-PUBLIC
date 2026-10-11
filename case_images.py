@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 from html import escape
+import re
 
 ASSETS = json.loads((Path(__file__).parent / "miniapp/case_images.json").read_text())
 
@@ -17,3 +18,14 @@ async def send_case_images(bot, chat_id, case_id):
                                  caption=caption, parse_mode="HTML")
         ids.append(getattr(m, "message_id", None))
     return ids
+
+
+def vignette_text(case_id, text):
+    """Hide exact media transport lines only for explicitly registered assets."""
+    omissions = {line for asset in ASSETS.get(str(case_id), [])
+                 for line in asset.get("vignette_omit", [])}
+    if not omissions:
+        return text
+    visible = "\n".join(line for line in text.splitlines()
+                        if line.strip() not in omissions)
+    return re.sub(r"\n{3,}", "\n\n", visible).strip()
