@@ -31,5 +31,18 @@
       "license_label": "CC BY-SA 4.0",
       "alt": "Electrocardiograma de 12 derivaciones"
     }
+  ],
+  "cdca18b6-3008-41f3-a72a-f0ebc23cdb72": [
+    {
+      "url": "https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/f256fcc3-5b07-4526-9e48-da960cf01b2e_figura.png",
+      "credit": "ACAMEDICS · Gráfica propia con distribuciones simuladas.",
+      "source": "https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/f256fcc3-5b07-4526-9e48-da960cf01b2e_figura.png",
+      "license": "https://docs.google.com/document/d/1swHO7WlmM-CUZ5ueqdOUl5RIA6dg0at0WZhL47OCrpE/view",
+      "license_label": "Autoría ACAMEDICS",
+      "vignette_omit": [
+        "![Distribución del marcador en personas con y sin enfermedad](https://xuxewzzeqgluimfmigjs.supabase.co/storage/v1/object/public/justification-images/f256fcc3-5b07-4526-9e48-da960cf01b2e_figura.png#acm-sha256=feea7023604a5e3c00fa3b6fce71bbb3f7507600c8218402b0a20ed6f2ad60ce)",
+        "Crédito de imagen: ACAMEDICS · Gráfica propia con distribuciones simuladas."
+      ]
+    }
   ]
 }
