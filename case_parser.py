@@ -139,8 +139,9 @@ _BIB_KEYWORDS = (
 
 _BIB_PATTERN = r"(?:^|\n)\s*" + _BIB_KEYWORDS + r"\b\s*[:.;\-]?\s*"
 
-# OPTIONS - detect option lines (A. or A) format)
-_OPTION_START = r"^[A-F][.)]\s+"
+# OPTIONS - detect option lines (A. or A) format; also A.), used to dodge the 😎 of "B)")
+_OPTION_SEP = r"(?:\.\)|[.)])"
+_OPTION_START = r"^[A-F]" + _OPTION_SEP + r"\s+"
 # End-of-options keywords: any section header
 _END_OPTIONS_KEYWORDS = (
     r"^(?:"
@@ -205,7 +206,7 @@ def _fix_telegram_emojis(text: str) -> str:
     for line in result.split("\n"):
         stripped = line.strip()
         # Skip lines that ARE option lines (start with A) B) etc.)
-        if re.match(r'^[A-F][.)]\s', stripped):
+        if re.match(_OPTION_START, stripped):
             new_lines.append(line)
         else:
             for emoji, replacement in emoji_to_inline.items():
@@ -228,10 +229,16 @@ def _split_inline_options(text: str) -> str:
     IMPORTANT: Only splits BEFORE the CORRECTA/answer section.
     This prevents "(opción C) es el tratamiento..." in justification
     from being split into a false option line.
+
+    Only a real run of options is split (see _option_chain): a vignette line
+    such as "...fiebre de 38,9 °C. Niega tos... del grupo A. ¿Cuál...?" stays
+    whole. Case #139 (11-may-2026) was published with "°C." and "grupo A."
+    taken as options C and A, and the question as the correct answer.
     """
     import re as _re
-    # Pattern: letter followed by . or ) and space, at word boundary
-    option_pat = _re.compile(r'(?<!\w)([A-F][.)]\s)')
+    # Pattern: letter followed by . or ) (or .)) and space, at line start or after a space
+    # ("°C. " and "(C. " are not options)
+    option_pat = _re.compile(r'(?:^|(?<=\s))([A-F])' + _OPTION_SEP + r'\s')
 
     # Find where the answer/correcta section starts - don't split after that
     answer_markers = _re.compile(
@@ -247,17 +254,18 @@ def _split_inline_options(text: str) -> str:
         line_end = current_pos + len(line)
         # Only split lines that are BEFORE the answer section
         if current_pos < split_boundary:
-            matches = list(option_pat.finditer(line))
-            if len(matches) >= 2:
+            stripped = line.strip()
+            matches = _option_chain(stripped, list(option_pat.finditer(stripped)))
+            if matches:
                 parts = []
                 for idx, m in enumerate(matches):
                     start = m.start()
-                    end = matches[idx + 1].start() if idx + 1 < len(matches) else len(line)
-                    part = line[start:end].strip()
+                    end = matches[idx + 1].start() if idx + 1 < len(matches) else len(stripped)
+                    part = stripped[start:end].strip()
                     if part:
                         parts.append(part)
                 if matches[0].start() > 0:
-                    prefix = line[:matches[0].start()].strip()
+                    prefix = stripped[:matches[0].start()].strip()
                     if prefix:
                         new_lines.append(prefix)
                 new_lines.extend(parts)
@@ -267,6 +275,31 @@ def _split_inline_options(text: str) -> str:
             new_lines.append(line)
         current_pos = line_end + 1  # +1 for the \n
     return "\n".join(new_lines)
+
+
+def _option_chain(line, matches):
+    """
+    Markers that really start options on one line: consecutive letters (A, B, C...).
+    - Line that starts with an option ("A. ...  B. ..."): at least 2 markers.
+    - Question before the options ("¿Cuál...? A. ... B. ... C. ..."): the run must
+      start at an A right after "?" or ":" and have at least 3 markers.
+    A marker out of sequence ("vitamina D. " inside option A) stays in the text.
+    """
+    if not matches:
+        return []
+    starts_with_option = matches[0].start() == 0
+    if starts_with_option:
+        firsts = matches[:1]
+    else:
+        firsts = [m for m in matches if m.group(1) == "A" and line[:m.start()].rstrip().endswith(("?", ":"))]
+    for first in firsts:
+        chain = [first]
+        for m in matches:
+            if m.start() > chain[-1].start() and ord(m.group(1)) == ord(chain[-1].group(1)) + 1:
+                chain.append(m)
+        if len(chain) >= (2 if starts_with_option else 3):
+            return chain
+    return []
 
 
 def parse_case(text: str) -> ParsedCase:
@@ -448,7 +481,7 @@ def _extract_vignette_and_options(text: str) -> Tuple[str, List[Dict[str, str]],
         if re.match(_END_OPTIONS_KEYWORDS, stripped, re.IGNORECASE):
             break
 
-        match = re.match(r"^([A-F])[.)]\s+(.*)", stripped)
+        match = re.match(r"^([A-F])" + _OPTION_SEP + r"\s+(.*)", stripped)
         if match:
             if current_option_letter:
                 options.append({
