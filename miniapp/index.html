@@ -1213,6 +1213,7 @@
                     else if (!e.shiftKey && document.activeElement===ultimo) {e.preventDefault();primero.focus();}
                 };
                 const mover = e => {
+                    if (e.type === 'resize') {cerrar();return;}
                     if (window.matchMedia('(max-width: 640px)').matches) return;
                     if (e.target instanceof Node && dialogo.contains(e.target)) return;
                     cerrar();
