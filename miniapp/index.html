@@ -841,6 +841,25 @@
           font-size:inherit !important;color:inherit !important;font-weight:inherit !important;
           float:none !important;line-height:inherit !important;margin:0 !important;
           font-family:inherit !important}
+
+        /* Tarjetas del glosario: mismas variables del caso, sin colorear el cuerpo. */
+        .acm-glosario-termino { cursor:pointer; text-decoration:underline dotted var(--primary) 1.5px; text-underline-offset:.22em; border-radius:2px; }
+        .acm-glosario-termino:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
+        .acm-glosario-termino[aria-expanded="true"] { background:var(--primary-glow); }
+        .acm-glosario-fondo { position:fixed; inset:0; z-index:2000; background:transparent; }
+        .acm-glosario-tarjeta { position:fixed; z-index:2001; max-height:calc(100dvh - 32px); overflow:auto; padding:20px; border:1px solid var(--border); border-radius:16px; background:var(--bg); color:var(--text-body); box-shadow:0 10px 40px #0003; font-family:var(--font-body); font-size:16px; line-height:1.6; user-select:text; }
+        .acm-glosario-cab { display:flex; align-items:flex-start; gap:16px; justify-content:space-between; margin-bottom:12px; }
+        .acm-glosario-cab h3 { font-family:var(--font-title); font-size:20px; line-height:1.3; color:var(--text); }
+        .acm-glosario-cab button { border:0; background:transparent; color:var(--text-body); cursor:pointer; font-size:28px; line-height:1; min-width:32px; min-height:32px; }
+        .acm-glosario-tarjeta p { margin:12px 0 4px; }
+        .acm-glosario-fuente { display:block; color:var(--primary); font-size:13px; margin-bottom:14px; }
+        .acm-glosario-relaciones { border-top:1px solid var(--border); margin-top:16px; padding-top:12px; display:flex; flex-wrap:wrap; gap:8px; }
+        .acm-glosario-relaciones > span { width:100%; font-size:13px; }
+        .acm-glosario-relacion { color:var(--primary); background:var(--primary-subtle); border:1px solid var(--border); border-radius:8px; padding:5px 9px; cursor:pointer; font:inherit; font-size:14px; }
+        @media(max-width:640px) {
+            .acm-glosario-fondo { background:#0006; }
+            .acm-glosario-tarjeta { left:0; right:0; bottom:0; max-height:75dvh; border-radius:20px 20px 0 0; padding:24px 20px calc(24px + env(safe-area-inset-bottom)); }
+        }
     </style>
 </head>
 <body>
@@ -1110,6 +1129,144 @@
                 .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<i>$1</i>');
         }
 
+        // ACAMEDICS-GLOSARIO:BEGIN — lector público por caso; canon LAB/glosario/ARQUITECTURA.md
+        const Glosario = (() => {
+            const letra = /[\p{L}\p{N}]/u;
+            const escapar = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            let abierto = null;
+            function coincidencias(texto, marcas, terminos) {
+                const formas = new Map();
+                for (const m of marcas || []) {
+                    if (!m || typeof m.forma !== 'string' || !m.forma || !terminos[m.id]) continue;
+                    const compacto = /^[\p{L}\p{N}/.\-]{2,12}$/u.test(m.forma);
+                    const sensible = (m.forma.match(/\p{Lu}/gu) || []).length >= 2
+                        || (/\d/u.test(m.forma) && /\p{L}/u.test(m.forma)) || /^\p{Ll}.*\p{Lu}/u.test(m.forma);
+                    formas.set(m.forma.toLocaleLowerCase('es'), { ...m, exacta: compacto && sensible });
+                }
+                if (!formas.size) return [];
+                const re = new RegExp([...formas.keys()].sort((a,b) => b.length-a.length).map(escapar).join('|'), 'giu');
+                const usados = new Set(), resultado = [];
+                for (const m of texto.matchAll(re)) {
+                    const ini = m.index, fin = ini + m[0].length;
+                    if ((ini && letra.test(texto[ini-1])) || (fin < texto.length && letra.test(texto[fin]))) continue;
+                    const f = formas.get(m[0].toLocaleLowerCase('es'));
+                    if (usados.has(f.id) || (f.exacta && f.forma !== m[0])) continue;
+                    usados.add(f.id); resultado.push({ini, fin, id: f.id});
+                }
+                return resultado;
+            }
+            function cerrar() {
+                if (!abierto) return;
+                const a = abierto; abierto = null;
+                a.origen.setAttribute('aria-expanded', 'false');
+                a.dialogo.remove(); a.fondo.remove();
+                document.removeEventListener('keydown', a.teclado, true);
+                window.removeEventListener('resize', a.mover);
+                window.removeEventListener('scroll', a.mover, true);
+                if (a.origen.isConnected) a.origen.focus({preventScroll:true});
+            }
+            function abrir(id, g, origen, pila = []) {
+                const t = g.terminos[id];
+                if (!t || !Array.isArray(t.definicion)) return;
+                cerrar();
+                const fondo = document.createElement('div'); fondo.className = 'acm-glosario-fondo';
+                const dialogo = document.createElement('div'); dialogo.className = 'acm-glosario-tarjeta';
+                dialogo.setAttribute('role','dialog'); dialogo.setAttribute('aria-modal','true');
+                dialogo.setAttribute('aria-label',t.termino); dialogo.tabIndex = -1;
+                const cab = document.createElement('div'); cab.className = 'acm-glosario-cab';
+                const titulo = document.createElement('h3'); titulo.textContent = t.termino;
+                const salir = document.createElement('button'); salir.type = 'button'; salir.textContent = '×';
+                salir.setAttribute('aria-label','Cerrar definición'); salir.onclick = cerrar;
+                cab.append(titulo,salir); dialogo.append(cab);
+                if (pila.length) {
+                    const volver = document.createElement('button'); volver.type = 'button';
+                    volver.textContent = '← '+g.terminos[pila[pila.length-1]].termino;
+                    volver.className = 'acm-glosario-relacion';
+                    volver.onclick = () => abrir(pila[pila.length-1],g,origen,pila.slice(0,-1));
+                    dialogo.append(volver);
+                }
+                for (const d of t.definicion) {
+                    if (!d || typeof d.texto !== 'string' || typeof d.fuente !== 'string') continue;
+                    const p = document.createElement('p'); p.textContent = d.texto; dialogo.append(p);
+                    const fuente = document.createElement(/^https:\/\//.test(d.url || '') ? 'a' : 'span');
+                    fuente.className = 'acm-glosario-fuente'; fuente.textContent = d.fuente;
+                    if (fuente.tagName === 'A') {fuente.href=d.url;fuente.target='_blank';fuente.rel='noopener noreferrer';}
+                    dialogo.append(fuente);
+                }
+                const relacionados = (t.relacionados || []).filter(r => r && g.terminos[r.id]);
+                if (relacionados.length) {
+                    const nav = document.createElement('div'); nav.className = 'acm-glosario-relaciones';
+                    const rotulo = document.createElement('span'); rotulo.textContent = 'Relacionados'; nav.append(rotulo);
+                    for (const r of relacionados) {
+                        const b = document.createElement('button'); b.type='button'; b.className='acm-glosario-relacion';
+                        b.textContent=g.terminos[r.id].termino; b.onclick=()=>abrir(r.id,g,origen,[...pila,id]);nav.append(b);
+                    }
+                    dialogo.append(nav);
+                }
+                fondo.onclick=cerrar;
+                const teclado = e => {
+                    if (e.key === 'Escape') {e.preventDefault();e.stopPropagation();cerrar();}
+                    if (e.key !== 'Tab') return;
+                    const foco = [...dialogo.querySelectorAll('button,a[href]')];
+                    const primero=foco[0], ultimo=foco[foco.length-1];
+                    if (e.shiftKey && document.activeElement===primero) {e.preventDefault();ultimo.focus();}
+                    else if (!e.shiftKey && document.activeElement===ultimo) {e.preventDefault();primero.focus();}
+                };
+                const mover = e => {
+                    if (window.matchMedia('(max-width: 640px)').matches) return;
+                    if (e.target instanceof Node && dialogo.contains(e.target)) return;
+                    cerrar();
+                };
+                abierto={origen,dialogo,fondo,teclado,mover};
+                origen.setAttribute('aria-expanded','true'); document.body.append(fondo,dialogo);
+                if (!window.matchMedia('(max-width: 640px)').matches) {
+                    const r=origen.getBoundingClientRect(), ancho=Math.min(360,window.innerWidth-32);
+                    dialogo.style.width=ancho+'px';
+                    dialogo.style.left=Math.max(16,Math.min(r.left,window.innerWidth-ancho-16))+'px';
+                    dialogo.style.top=Math.max(16,Math.min(r.bottom+8,window.innerHeight-dialogo.offsetHeight-16))+'px';
+                }
+                document.addEventListener('keydown',teclado,true);
+                window.addEventListener('resize',mover); window.addEventListener('scroll',mover,true);
+                salir.focus({preventScroll:true});
+            }
+            function marcar(root, marcas, g) {
+                if (root.dataset.glosarioAplicado) return;
+                const texto=root.textContent, matches=coincidencias(texto,marcas,g.terminos);
+                for (const m of matches.reverse()) {
+                    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+                    let n,offset=0,ini=null,fin=null;
+                    while ((n=walker.nextNode())) {
+                        const hasta=offset+n.textContent.length;
+                        if (!ini && m.ini<hasta) ini={n,pos:m.ini-offset};
+                        if (m.fin<=hasta) {fin={n,pos:m.fin-offset};break;}
+                        offset=hasta;
+                    }
+                    if (!ini || !fin) continue;
+                    const range=document.createRange();range.setStart(ini.n,ini.pos);range.setEnd(fin.n,fin.pos);
+                    const b=document.createElement('span'); b.className='acm-glosario-termino';b.tabIndex=0;
+                    b.setAttribute('role','button');b.setAttribute('aria-haspopup','dialog');b.setAttribute('aria-expanded','false');
+                    b.dataset.termino=m.id;b.append(range.extractContents());range.insertNode(b);
+                    b.onclick=e=>{e.stopPropagation();if(abierto?.origen===b)cerrar();else abrir(m.id,g,b);};
+                    b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();abrir(m.id,g,b);}};
+                }
+                root.dataset.glosarioAplicado='true';
+            }
+            function aplicar(root,g) {
+                if (!g || !g.bloques || !g.terminos) return;
+                for (const bloque of root.querySelectorAll('[data-glosario-bloque]'))
+                    marcar(bloque,g.bloques[bloque.dataset.glosarioBloque],g);
+            }
+            async function cargar(id,base,headers,root) {
+                if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)) return;
+                try {
+                    const r=await fetch(base+'/rpc/glosario_del_caso',{method:'POST',headers,body:JSON.stringify({p_id:id}),signal:AbortSignal.timeout(10000)});
+                    if (r.ok) aplicar(root,await r.json());
+                } catch (_) { /* Una tarjeta no impide leer el caso si falla la red. */ }
+            }
+            return {cargar,aplicar,coincidencias,cerrar};
+        })();
+        // ACAMEDICS-GLOSARIO:END
+
         // ─── Load case from Supabase ───
         async function loadCase() {
             try {
@@ -1153,6 +1310,7 @@
                     }
                 } catch (e) { console.warn('No se pudo cargar la atribución de imágenes', e); }
                 renderCase(cases[0]);
+                void Glosario.cargar(caseId,base,h,contentDiv);
             } catch(e) { console.error(e); showError('Error cargando el caso clínico'); }
         }
 
@@ -1266,7 +1424,7 @@
             // ── JUSTIFICATION ──
             if (d.justification) {
                 html += '<div class="justification-section">';
-                html += '<div class="justification" id="justText">';
+                html += '<div class="justification" id="justText" data-glosario-bloque="correcta">';
 
                 let justText = d.justification;
                 // Fix option-letter references in justification text
@@ -1357,8 +1515,9 @@
                          +  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
                          +  '</span><span class="fila-n">'+esc('Opción '+letraOk)+'</span>'
                          +  '<span class="ok-est">Correcta</span></div>';
+                    html += '<div data-glosario-bloque="correcta">';
                     cuerpos.slice(0, corte).forEach(t => { html += cuerpoHtml(t); });
-                    html += '</div>';
+                    html += '</div></div>';
 
                     // Los descartes: uno por parrafo, en el orden en que vienen
                     const resto = cuerpos.slice(corte).filter(t => !esTituloOtras(t) && !esRaya(t));
@@ -1412,9 +1571,9 @@
                                  +     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>'
                                  +   '</span>'
                                  +   '<svg class="opc-flecha" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>'
-                                 +  '</summary>'+(estructuradas
+                                 +  '</summary><div data-glosario-bloque="'+esc(letra)+'">'+(estructuradas
                                      ? texto.split(/\n\s*\n/).filter(p=>p.trim()).map(p=>cuerpoHtml(fusion(p))).join('')
-                                     : cuerpoHtml(texto))+'</details>';
+                                     : cuerpoHtml(texto))+'</div></details>';
                         });
                     }
                 }
@@ -1429,7 +1588,7 @@
                 html += '<div class="tip-icon">💡</div>';
                 html += '<span class="tip-label">Tip <span class="tip-label-accent">ACAMÉDICO</span></span>';
                 html += '</div>';
-                html += '<div class="tip-text">'+mdBold(esc(d.tip))+'</div>';
+                html += '<div class="tip-text" data-glosario-bloque="tip">'+mdBold(esc(d.tip))+'</div>';
                 html += '</div></div>';
             }
 
